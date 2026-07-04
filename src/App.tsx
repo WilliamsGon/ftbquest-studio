@@ -18,6 +18,26 @@ const hexColorToDecimal = (hex: string): number => {
   return parseInt(cleanHex, 16);
 };
 
+const getItemX = (item: { type: 'quest' | 'image'; id: string | number }, quests: any[], images: any[]): number => {
+  if (item.type === 'quest') {
+    const q = quests.find(qi => qi.id === item.id);
+    return q ? (q.x?.value ?? q.x ?? 0) : 0;
+  } else {
+    const img = images[item.id as number];
+    return img ? (img.x?.value ?? img.x ?? 0) : 0;
+  }
+};
+
+const getItemY = (item: { type: 'quest' | 'image'; id: string | number }, quests: any[], images: any[]): number => {
+  if (item.type === 'quest') {
+    const q = quests.find(qi => qi.id === item.id);
+    return q ? (q.y?.value ?? q.y ?? 0) : 0;
+  } else {
+    const img = images[item.id as number];
+    return img ? (img.y?.value ?? img.y ?? 0) : 0;
+  }
+};
+
 function App() {
   const [snbtData, setSnbtData] = useState<any>(null);
   const [filename, setFilename] = useState<string>('Sin cargar');
@@ -585,6 +605,44 @@ function App() {
     updateState(newQuests, newImages);
   };
 
+  const updateSelectedCoordinates = (axis: 'x' | 'y', val: number) => {
+    if (isNaN(val)) return;
+    
+    const questUpdates: { id: string; updates: any }[] = [];
+    const imageUpdates: { index: number; updates: any }[] = [];
+    
+    selection.items.forEach(item => {
+      const updates = { [axis]: val };
+      if (item.type === 'quest') {
+        questUpdates.push({ id: item.id as string, updates });
+      } else {
+        imageUpdates.push({ index: item.id as number, updates });
+      }
+    });
+
+    const newQuests = quests.map(q => {
+      const found = questUpdates.find(u => u.id === q.id);
+      if (found) {
+        return {
+          ...q,
+          x: found.updates.x !== undefined ? { __type: 'number', value: found.updates.x, suffix: 'd' } : q.x,
+          y: found.updates.y !== undefined ? { __type: 'number', value: found.updates.y, suffix: 'd' } : q.y
+        };
+      }
+      return q;
+    });
+
+    const newImages = JSON.parse(JSON.stringify(images));
+    imageUpdates.forEach(u => {
+      if (newImages[u.index]) {
+        if (u.updates.x !== undefined) newImages[u.index].x = { __type: 'number', value: u.updates.x, suffix: 'd' };
+        if (u.updates.y !== undefined) newImages[u.index].y = { __type: 'number', value: u.updates.y, suffix: 'd' };
+      }
+    });
+
+    updateState(newQuests, newImages);
+  };
+
   return (
     <>
     <div className="app-container">
@@ -719,6 +777,56 @@ function App() {
                   <AlignEndHorizontal size={18} />
                 </button>
               </div>
+
+              {/* Coordenadas comunes masivas */}
+              {(() => {
+                const firstItemX = getItemX(selection.items[0], quests, images);
+                const shareSameX = selection.items.every(item => getItemX(item, quests, images) === firstItemX);
+                
+                const firstItemY = getItemY(selection.items[0], quests, images);
+                const shareSameY = selection.items.every(item => getItemY(item, quests, images) === firstItemY);
+
+                return (
+                  <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>Coordenadas del Grupo</h3>
+                    <div className="row">
+                      <div className="input-group">
+                        <label>X Común</label>
+                        <input 
+                          type="number" 
+                          step="0.5" 
+                          className="input-field" 
+                          placeholder={shareSameX ? "" : "Mixto"}
+                          value={shareSameX ? firstItemX : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              updateSelectedCoordinates('x', val);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Y Común</label>
+                        <input 
+                          type="number" 
+                          step="0.5" 
+                          className="input-field" 
+                          placeholder={shareSameY ? "" : "Mixto"}
+                          value={shareSameY ? firstItemY : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              updateSelectedCoordinates('y', val);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {(() => {
                 const selectedImages = selection.items.filter(item => item.type === 'image');
                 if (selectedImages.length === 0) return null;
