@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
-import { MousePointer, Hand } from 'lucide-react';
+import { MousePointer, Hand, Magnet } from 'lucide-react';
 import Konva from 'konva';
 
 interface CanvasProps {
@@ -137,6 +137,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
 export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [snapToGrid, setSnapToGrid] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -273,6 +274,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
         >
           <Hand size={16} />
           Mover Plano <kbd>Space</kbd>
+        </button>
+        <button 
+          className={`toolbar-btn ${snapToGrid ? 'active' : ''}`}
+          onClick={() => setSnapToGrid(!snapToGrid)}
+          title="Ajustar a Rejilla (Snap to Grid)"
+        >
+          <Magnet size={16} />
+          Imán (Snap)
         </button>
       </div>
 
@@ -491,7 +500,16 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
-                  onMouseMove={(e) => {
+                  onDragMove={(e) => {
+                    if (snapToGrid) {
+                      const snapPixels = 0.5 * SCALE_FACTOR;
+                      const x = e.target.x();
+                      const y = e.target.y();
+                      const snappedX = Math.round(x / snapPixels) * snapPixels;
+                      const snappedY = Math.round(y / snapPixels) * snapPixels;
+                      e.target.x(snappedX);
+                      e.target.y(snappedY);
+                    }
                     if (dragStartPos) {
                       const deltaX = e.target.x() - dragStartPos.x;
                       const deltaY = e.target.y() - dragStartPos.y;
@@ -500,8 +518,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   }}
                   onDragEnd={(e) => {
                     if (dragStartPos) {
-                      const deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                      const deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+                      let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
+                      let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+
+                      if (snapToGrid) {
+                        deltaX = Math.round(deltaX / 0.5) * 0.5;
+                        deltaY = Math.round(deltaY / 0.5) * 0.5;
+                      }
 
                       const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
                       if (isImgSelected && selection.items.length > 1) {
@@ -537,8 +560,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                         if (questUpdates.length > 0) updateQuest(questUpdates);
                       } else {
                         // Arrastre individual fuera de selección
-                        const newX = e.target.x() / SCALE_FACTOR;
-                        const newY = e.target.y() / SCALE_FACTOR;
+                        let newX = e.target.x() / SCALE_FACTOR;
+                        let newY = e.target.y() / SCALE_FACTOR;
+                        if (snapToGrid) {
+                          newX = Math.round(newX / 0.5) * 0.5;
+                          newY = Math.round(newY / 0.5) * 0.5;
+                        }
                         updateImage(idx, { x: newX, y: newY });
                       }
                     }
@@ -627,7 +654,16 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
-                  onMouseMove={(e) => {
+                  onDragMove={(e) => {
+                    if (snapToGrid) {
+                      const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
+                      const x = e.target.x();
+                      const y = e.target.y();
+                      const snappedX = Math.round(x / snapPixels) * snapPixels;
+                      const snappedY = Math.round(y / snapPixels) * snapPixels;
+                      e.target.x(snappedX);
+                      e.target.y(snappedY);
+                    }
                     if (dragStartPos) {
                       const deltaX = e.target.x() - dragStartPos.x;
                       const deltaY = e.target.y() - dragStartPos.y;
@@ -636,8 +672,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   }}
                   onDragEnd={(e) => {
                     if (dragStartPos) {
-                      const deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                      const deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+                      let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
+                      let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+
+                      if (snapToGrid) {
+                        deltaX = Math.round(deltaX / 0.5) * 0.5;
+                        deltaY = Math.round(deltaY / 0.5) * 0.5;
+                      }
 
                       const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                       if (isQSelected && selection.items.length > 1) {
@@ -672,8 +713,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                         if (questUpdates.length > 0) updateQuest(questUpdates);
                         if (imageUpdates.length > 0) updateImage(imageUpdates);
                       } else {
-                        const newX = e.target.x() / SCALE_FACTOR;
-                        const newY = e.target.y() / SCALE_FACTOR;
+                        let newX = e.target.x() / SCALE_FACTOR;
+                        let newY = e.target.y() / SCALE_FACTOR;
+                        if (snapToGrid) {
+                          const snapStep = sizeVal / 2;
+                          newX = Math.round(newX / snapStep) * snapStep;
+                          newY = Math.round(newY / snapStep) * snapStep;
+                        }
                         updateQuest(q.id, { x: newX, y: newY });
                       }
                     }
