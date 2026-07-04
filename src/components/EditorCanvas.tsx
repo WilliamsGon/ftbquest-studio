@@ -21,6 +21,7 @@ interface CanvasProps {
   }) => void;
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
+  onPointerPosChange?: (pos: { x: number; y: number } | null) => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -133,7 +134,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   );
 };
 
-export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage }) => {
+export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -312,8 +313,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
           }
         }}
         onMouseMove={(e) => {
-          if (!startPointerPos || !selectionRect) return;
           const stage = e.target.getStage();
+          if (stage) {
+            const pointer = stage.getPointerPosition();
+            if (pointer) {
+              const localX = (pointer.x - stage.x()) / stage.scaleX() / SCALE_FACTOR;
+              const localY = (pointer.y - stage.y()) / stage.scaleY() / SCALE_FACTOR;
+              onPointerPosChange?.({ x: localX, y: localY });
+            }
+          }
+
+          if (!startPointerPos || !selectionRect) return;
           if (!stage) return;
           const pointer = stage.getPointerPosition();
           if (pointer) {
@@ -326,6 +336,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               h: Math.abs(localY - startPointerPos.y),
             });
           }
+        }}
+        onMouseLeave={() => {
+          onPointerPosChange?.(null);
         }}
         onMouseUp={(e) => {
           if (startPointerPos && selectionRect) {

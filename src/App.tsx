@@ -80,6 +80,17 @@ function App() {
     });
   };
 
+  const questsRef = useRef(quests);
+  const imagesRef = useRef(images);
+  const selectionRef = useRef(selection);
+  const mouseCanvasPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    questsRef.current = quests;
+    imagesRef.current = images;
+    selectionRef.current = selection;
+  }, [quests, images, selection]);
+
   const [nbtEditor, setNbtEditor] = useState<{ title: string; value: string; onSave: (val: any) => void } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,15 +141,19 @@ function App() {
   };
 
   const copyToClipboard = () => {
-    const items = selection.items;
+    const currentSelection = selectionRef.current;
+    const currentQuests = questsRef.current;
+    const currentImages = imagesRef.current;
+
+    const items = currentSelection.items;
     if (items.length === 0) return;
 
     const itemsToCopy = items.map(item => {
       if (item.type === 'quest') {
-        const q = quests.find(qi => qi.id === item.id);
+        const q = currentQuests.find(qi => qi.id === item.id);
         return { type: 'quest' as const, data: JSON.parse(JSON.stringify(q)) };
       } else {
-        const img = images[item.id as number];
+        const img = currentImages[item.id as number];
         return { type: 'image' as const, data: JSON.parse(JSON.stringify(img)) };
       }
     }).filter(item => item.data !== null && item.data !== undefined);
@@ -152,21 +167,52 @@ function App() {
     const clip = clipboardRef.current;
     if (clip.length === 0) return;
 
-    let nextQuests = [...quests];
-    let nextImages = [...images];
+    let nextQuests = [...questsRef.current];
+    let nextImages = [...imagesRef.current];
 
     const newlyPastedItems: { type: 'quest' | 'image'; id: string | number }[] = [];
 
+    // Calcular el centro geométrico del grupo en el portapapeles
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
     clip.forEach(item => {
+      const x = item.data.x?.value ?? item.data.x ?? 0;
+      const y = item.data.y?.value ?? item.data.y ?? 0;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    });
+
+    const groupCenterX = (minX + maxX) / 2;
+    const groupCenterY = (minY + maxY) / 2;
+
+    const mousePos = mouseCanvasPosRef.current;
+
+    clip.forEach(item => {
+      const origX = item.data.x?.value ?? item.data.x ?? 0;
+      const origY = item.data.y?.value ?? item.data.y ?? 0;
+
+      let targetX = origX + 0.5;
+      let targetY = origY + 0.5;
+
+      if (mousePos !== null) {
+        // Calcular offset respecto al centro del grupo y colocarlo en el puntero del mouse
+        const offsetX = origX - groupCenterX;
+        const offsetY = origY - groupCenterY;
+        targetX = mousePos.x + offsetX;
+        targetY = mousePos.y + offsetY;
+      }
+
       if (item.type === 'image') {
         const img = item.data;
-        const currentX = img.x?.value ?? img.x ?? 0;
-        const currentY = img.y?.value ?? img.y ?? 0;
-        
         const newImg = {
           ...img,
-          x: { __type: 'number', value: currentX + 0.5, suffix: 'd' },
-          y: { __type: 'number', value: currentY + 0.5, suffix: 'd' }
+          x: { __type: 'number', value: targetX, suffix: 'd' },
+          y: { __type: 'number', value: targetY, suffix: 'd' }
         };
 
         const newIndex = nextImages.length;
@@ -174,12 +220,8 @@ function App() {
         newlyPastedItems.push({ type: 'image', id: newIndex });
       } else if (item.type === 'quest') {
         const q = item.data;
-        const currentX = q.x?.value ?? q.x ?? 0;
-        const currentY = q.y?.value ?? q.y ?? 0;
-
-        // Generar un ID hexadecimal único de 16 caracteres
+        
         let newId = generateHexId();
-        // Evitar colisión
         while (nextQuests.some(qi => qi.id === newId)) {
           newId = generateHexId();
         }
@@ -187,8 +229,8 @@ function App() {
         const newQuest = {
           ...q,
           id: newId,
-          x: { __type: 'number', value: currentX + 0.5, suffix: 'd' },
-          y: { __type: 'number', value: currentY + 0.5, suffix: 'd' }
+          x: { __type: 'number', value: targetX, suffix: 'd' },
+          y: { __type: 'number', value: targetY, suffix: 'd' }
         };
 
         nextQuests.push(newQuest);
@@ -631,6 +673,7 @@ function App() {
             setSelection={setSelection}
             updateQuest={updateQuest}
             updateImage={updateImage}
+            onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
           />
         )}
       </div>
