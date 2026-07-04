@@ -1,0 +1,667 @@
+import React, { useState, useRef } from 'react';
+import { Upload, Download, Layers, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2 } from 'lucide-react';
+import { parseSNBT, stringifySNBT } from './utils/snbt';
+import { v4 as uuidv4 } from 'uuid';
+import { EditorCanvas } from './components/EditorCanvas';
+
+const generateHexId = () => uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
+
+function App() {
+  const [snbtData, setSnbtData] = useState<any>(null);
+  const [filename, setFilename] = useState<string>('Sin cargar');
+  
+  const [quests, setQuests] = useState<any[]>([]);
+  const [images, setImages] = useState<any[]>([]);
+  
+  const [layers, setLayers] = useState({ quests: true, images: true });
+  const [rawSelection, setRawSelection] = useState<{ type: 'quest' | 'image' | null, ids: (string | number)[] }>({ type: null, ids: [] });
+  
+  const selection = {
+    type: rawSelection.type,
+    ids: rawSelection.ids,
+    id: rawSelection.ids[0] ?? null
+  };
+
+  const setSelection = (newSel: { type: 'quest' | 'image' | null, id?: string | number | null, ids?: (string | number)[] }) => {
+    setRawSelection({
+      type: newSel.type,
+      ids: newSel.ids ? newSel.ids : (newSel.id !== undefined && newSel.id !== null ? [newSel.id] : [])
+    });
+  };
+
+  const [nbtEditor, setNbtEditor] = useState<{ title: string; value: string; onSave: (val: any) => void } | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFilename(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = parseSNBT(text);
+        setSnbtData(parsed);
+        
+        if (parsed.quests && Array.isArray(parsed.quests)) setQuests(parsed.quests);
+        if (parsed.images && Array.isArray(parsed.images)) setImages(parsed.images);
+      } catch (err) {
+        console.error("Error parsing SNBT:", err);
+        alert("Error al parsear el archivo SNBT. Revisa la consola.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExport = () => {
+    if (!snbtData) return;
+    const newData = { ...snbtData };
+    newData.quests = quests;
+    newData.images = images;
+    
+    const outputSNBT = stringifySNBT(newData);
+    const blob = new Blob([outputSNBT], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.snbt') ? filename : `${filename}.snbt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const addQuest = () => {
+    const newQuest = {
+      id: generateHexId(),
+      x: { __type: 'number', value: 0.0, suffix: 'd' },
+      y: { __type: 'number', value: 0.0, suffix: 'd' },
+      title: "Nueva Misión",
+      tasks: [],
+      rewards: []
+    };
+    setQuests([...quests, newQuest]);
+    setSelection({ type: 'quest', id: newQuest.id });
+  };
+
+  const addImage = () => {
+    const newImage = {
+      image: "minecraft:textures/block/stone.png",
+      x: { __type: 'number', value: 0.0, suffix: 'd' },
+      y: { __type: 'number', value: 0.0, suffix: 'd' },
+      width: { __type: 'number', value: 2.0, suffix: 'd' },
+      height: { __type: 'number', value: 2.0, suffix: 'd' },
+      rotation: { __type: 'number', value: 0.0, suffix: 'd' },
+      order: 1
+    };
+    setImages([...images, newImage]);
+    setSelection({ type: 'image', id: images.length });
+  };
+
+  const updateQuest = (idOrUpdatesList: string | { id: string, updates: any }[], updates?: any) => {
+    if (Array.isArray(idOrUpdatesList)) {
+      setQuests(quests.map(q => {
+        const found = idOrUpdatesList.find(u => u.id === q.id);
+        if (found) {
+          const u = found.updates;
+          return {
+            ...q,
+            ...u,
+            x: u.x !== undefined ? { __type: 'number', value: u.x, suffix: 'd' } : q.x,
+            y: u.y !== undefined ? { __type: 'number', value: u.y, suffix: 'd' } : q.y,
+          };
+        }
+        return q;
+      }));
+    } else {
+      const id = idOrUpdatesList;
+      setQuests(quests.map(q => {
+        if (q.id === id) {
+          return {
+            ...q,
+            ...updates,
+            x: updates.x !== undefined ? { __type: 'number', value: updates.x, suffix: 'd' } : q.x,
+            y: updates.y !== undefined ? { __type: 'number', value: updates.y, suffix: 'd' } : q.y,
+          };
+        }
+        return q;
+      }));
+    }
+  };
+
+  const deleteQuest = (id: string) => {
+    setQuests(quests.filter(q => q.id !== id));
+    setSelection({ type: null, id: null });
+  };
+
+  const updateImage = (indexOrUpdatesList: number | { index: number, updates: any }[], updates?: any) => {
+    const newImages = [...images];
+    if (Array.isArray(indexOrUpdatesList)) {
+      indexOrUpdatesList.forEach(({ index, updates: u }) => {
+        if (newImages[index]) {
+          if (u.x !== undefined) newImages[index].x = { __type: 'number', value: u.x, suffix: 'd' };
+          if (u.y !== undefined) newImages[index].y = { __type: 'number', value: u.y, suffix: 'd' };
+          if (u.width !== undefined) newImages[index].width = { __type: 'number', value: u.width, suffix: 'd' };
+          if (u.height !== undefined) newImages[index].height = { __type: 'number', value: u.height, suffix: 'd' };
+          if (u.order !== undefined) newImages[index].order = { __type: 'number', value: u.order, suffix: '' };
+          if (u.image !== undefined) newImages[index].image = u.image;
+        }
+      });
+    } else {
+      const index = indexOrUpdatesList;
+      if (newImages[index]) {
+        if (updates.x !== undefined) newImages[index].x = { __type: 'number', value: updates.x, suffix: 'd' };
+        if (updates.y !== undefined) newImages[index].y = { __type: 'number', value: updates.y, suffix: 'd' };
+        if (updates.width !== undefined) newImages[index].width = { __type: 'number', value: updates.width, suffix: 'd' };
+        if (updates.height !== undefined) newImages[index].height = { __type: 'number', value: updates.height, suffix: 'd' };
+        if (updates.order !== undefined) newImages[index].order = { __type: 'number', value: updates.order, suffix: '' };
+        if (updates.image !== undefined) newImages[index].image = updates.image;
+      }
+    }
+    setImages(newImages);
+  };
+
+  return (
+    <>
+    <div className="app-container">
+      {/* Sidebar Izquierda */}
+      <div className="sidebar-left glass-panel">
+        <div className="header">
+          <h1><MapIcon size={20} className="text-accent" /> FTB Quest Editor</h1>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{filename}</p>
+          <div className="row">
+            <button className="btn btn-secondary btn-full" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={16} /> Abrir
+            </button>
+            <input type="file" accept=".snbt" ref={fileInputRef} className="file-input-hidden" onChange={handleFileUpload} />
+            <button className="btn btn-primary btn-full" onClick={handleExport} disabled={!snbtData}>
+              <Download size={16} /> Exportar
+            </button>
+          </div>
+        </div>
+
+        <div className="content-section">
+          <div>
+            <h2 className="section-title">Capas (Layers)</h2>
+            <div 
+              className={`toggle-item ${layers.quests ? 'active' : ''}`}
+              onClick={() => setLayers(l => ({ ...l, quests: !l.quests }))}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapIcon size={16} /> Misiones
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {quests.length}
+              </span>
+            </div>
+            
+            <div 
+              className={`toggle-item ${layers.images ? 'active' : ''}`}
+              onClick={() => setLayers(l => ({ ...l, images: !l.images }))}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ImageIcon size={16} /> Imágenes Fondo
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {images.length}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="section-title">Crear</h2>
+            <button className="btn btn-secondary btn-full" style={{ marginBottom: '8px' }} onClick={addQuest} disabled={!snbtData}>
+              <Plus size={16} /> Nueva Misión
+            </button>
+            <button className="btn btn-secondary btn-full" onClick={addImage} disabled={!snbtData}>
+              <Plus size={16} /> Nueva Imagen
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Canvas Central */}
+      <div className="canvas-container">
+        {!snbtData ? (
+          <div className="empty-state">
+            <MapIcon size={48} opacity={0.5} />
+            <h2>Carga un archivo .snbt para empezar</h2>
+            <p>El canvas interactivo se mostrará aquí.</p>
+          </div>
+        ) : (
+          <EditorCanvas 
+            quests={quests}
+            images={images}
+            layersVisible={layers}
+            selection={selection}
+            setSelection={setSelection}
+            updateQuest={updateQuest}
+            updateImage={updateImage}
+          />
+        )}
+      </div>
+
+      {/* Sidebar Derecha - Propiedades */}
+      <div className="sidebar-right glass-panel">
+        <div className="header">
+          <h1><Settings size={20} /> Propiedades</h1>
+        </div>
+        <div className="content-section">
+          {!selection.type && (
+            <div className="empty-state">
+              <p>Selecciona una misión o imagen para ver sus propiedades.</p>
+            </div>
+          )}
+          
+          {selection.type === 'image' && selection.id !== null && (
+            <div>
+              <h2 className="section-title">Imagen Seleccionada</h2>
+              <div className="input-group">
+                <label>Textura (URL/Path)</label>
+                <input type="text" className="input-field" 
+                  value={images[selection.id as number]?.image || ''} 
+                  onChange={(e) => updateImage(selection.id as number, { image: e.target.value })}
+                />
+              </div>
+              <div className="row">
+                <div className="input-group">
+                  <label>X</label>
+                  <input type="number" step="0.5" className="input-field" 
+                    value={images[selection.id as number]?.x?.value ?? 0} 
+                    onChange={(e) => updateImage(selection.id as number, { x: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Y</label>
+                  <input type="number" step="0.5" className="input-field" 
+                    value={images[selection.id as number]?.y?.value ?? 0} 
+                    onChange={(e) => updateImage(selection.id as number, { y: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="row">
+                <div className="input-group">
+                  <label>Width</label>
+                  <input type="number" step="0.5" className="input-field" 
+                    value={images[selection.id as number]?.width?.value ?? 2} 
+                    onChange={(e) => updateImage(selection.id as number, { width: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Height</label>
+                  <input type="number" step="0.5" className="input-field" 
+                    value={images[selection.id as number]?.height?.value ?? 2} 
+                    onChange={(e) => updateImage(selection.id as number, { height: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Order (Capa/Z-Index)</label>
+                <input type="number" step="1" className="input-field" 
+                  value={images[selection.id as number]?.order?.value ?? images[selection.id as number]?.order ?? 1} 
+                  onChange={(e) => updateImage(selection.id as number, { order: parseInt(e.target.value) })}
+                />
+              </div>
+            </div>
+          )}
+
+          {selection.type === 'quest' && selection.id !== null && (() => {
+            const selectedQuest = quests.find(q => q && q.id === selection.id);
+            if (!selectedQuest) return <div className="empty-state"><p>Misión no encontrada.</p></div>;
+
+            // Asegurar que tasks y rewards sean arrays (el parser SNBT podría devolver un objeto si solo hay un elemento sin corchetes)
+            const tasksArray = Array.isArray(selectedQuest.tasks) ? selectedQuest.tasks : (selectedQuest.tasks ? [selectedQuest.tasks] : []);
+            const rewardsArray = Array.isArray(selectedQuest.rewards) ? selectedQuest.rewards : (selectedQuest.rewards ? [selectedQuest.rewards] : []);
+
+            return (
+              <div>
+                <h2 className="section-title">Misión Seleccionada</h2>
+                <div className="input-group">
+                  <label>ID</label>
+                  <input type="text" className="input-field" readOnly value={selection.id as string} />
+                </div>
+                <div className="input-group">
+                  <label>Título</label>
+                  <input type="text" className="input-field" 
+                    value={selectedQuest.title || ''} 
+                    onChange={(e) => updateQuest(selection.id as string, { title: e.target.value })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Ícono (Item/Ruta)</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <input type="text" className="input-field" 
+                      value={typeof selectedQuest.icon === 'string' ? selectedQuest.icon : (selectedQuest.icon?.id || '')} 
+                      onChange={(e) => {
+                        let newIcon: any = e.target.value;
+                        if (typeof selectedQuest.icon === 'object' && selectedQuest.icon !== null) {
+                           newIcon = { ...selectedQuest.icon, id: e.target.value };
+                        }
+                        updateQuest(selection.id as string, { icon: newIcon });
+                      }}
+                    />
+                    <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
+                      setNbtEditor({
+                        title: 'Editar Ícono NBT',
+                        value: JSON.stringify(selectedQuest.icon || "minecraft:stone", null, 2),
+                        onSave: (newVal) => {
+                          updateQuest(selection.id as string, { icon: newVal });
+                        }
+                      });
+                    }}><Settings size={16} /></button>
+                  </div>
+                </div>
+                <div className="input-group">
+                  <label>Descripción</label>
+                  <textarea className="input-field" rows={3}
+                    value={(selectedQuest.description || []).join('\n')}
+                    onChange={(e) => updateQuest(selection.id as string, { description: e.target.value.split('\n') })}
+                  />
+                </div>
+                <div className="row">
+                  <div className="input-group">
+                    <label>Forma (Shape)</label>
+                    <select className="input-field" 
+                      value={selectedQuest.shape || 'circle'}
+                      onChange={(e) => updateQuest(selection.id as string, { shape: e.target.value })}
+                    >
+                      <option value="circle">Circle</option>
+                      <option value="gear">Gear</option>
+                      <option value="octagon">Octagon</option>
+                      <option value="rsquare">Rounded Square</option>
+                      <option value="diamond">Diamond</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Tamaño</label>
+                    <input type="number" step="0.5" className="input-field" 
+                      value={selectedQuest.size?.value ?? 1.0} 
+                      onChange={(e) => updateQuest(selection.id as string, { size: { __type: 'number', value: parseFloat(e.target.value), suffix: 'd' } })}
+                    />
+                  </div>
+                </div>
+                <div className="row">
+                  <div className="input-group">
+                    <label>X</label>
+                    <input type="number" step="0.5" className="input-field" 
+                      value={selectedQuest.x?.value ?? 0} 
+                      onChange={(e) => updateQuest(selection.id as string, { x: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label>Y</label>
+                    <input type="number" step="0.5" className="input-field" 
+                      value={selectedQuest.y?.value ?? 0} 
+                      onChange={(e) => updateQuest(selection.id as string, { y: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', marginTop: '10px' }}>
+                  <input type="checkbox" id="hide_deps"
+                    checked={selectedQuest.hide_until_deps_complete || false}
+                    onChange={(e) => updateQuest(selection.id as string, { hide_until_deps_complete: e.target.checked })}
+                  />
+                  <label htmlFor="hide_deps" style={{ marginLeft: '8px', marginBottom: 0, cursor: 'pointer' }}>Ocultar hasta completar dependencias</label>
+                </div>
+
+                {/* Tasks Section */}
+                <div style={{ marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h3 style={{ fontSize: '0.9rem' }}>Tareas (Tasks)</h3>
+                    <button className="btn-icon" onClick={() => {
+                      const newTasks = [...tasksArray, { id: generateHexId(), type: 'item', item: 'minecraft:stone', count: { __type: 'number', value: 1, suffix: 'L' } }];
+                      updateQuest(selection.id as string, { tasks: newTasks });
+                    }}><Plus size={16} /></button>
+                  </div>
+                  {tasksArray.map((task: any, tIdx: number) => {
+                    if (!task) return null;
+                    return (
+                      <div key={task.id || tIdx} style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <select className="input-field" style={{ width: 'auto', padding: '2px 8px', height: 'auto', fontSize: '0.8rem' }}
+                            value={task.type || 'item'}
+                            onChange={(e) => {
+                              const newTasks = [...tasksArray];
+                              const newType = e.target.value;
+                              newTasks[tIdx] = { ...newTasks[tIdx], type: newType };
+                              if (newType === 'checkmark' && !newTasks[tIdx].title) newTasks[tIdx].title = "Checkmark";
+                              if (newType === 'item' && !newTasks[tIdx].item) {
+                                newTasks[tIdx].item = "minecraft:stone";
+                                newTasks[tIdx].count = { __type: 'number', value: 1, suffix: 'L' };
+                              }
+                              updateQuest(selection.id as string, { tasks: newTasks });
+                            }}
+                          >
+                            <option value="item">Item</option>
+                            <option value="checkmark">Checkmark</option>
+                          </select>
+                          <Trash2 size={14} style={{ cursor: 'pointer', color: 'var(--danger-color)' }} onClick={() => {
+                            const newTasks = [...tasksArray];
+                            newTasks.splice(tIdx, 1);
+                            updateQuest(selection.id as string, { tasks: newTasks });
+                          }} />
+                        </div>
+                        {task.type === 'item' && (
+                          <div className="row" style={{ flexDirection: 'column', gap: '8px' }}>
+                            <div className="row">
+                              <div className="input-group" style={{ flex: 2 }}>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <input type="text" className="input-field" value={typeof task.item === 'string' ? task.item : (task.item?.id || '')} placeholder="Item (ej. minecraft:dirt)" 
+                                    onChange={(e) => {
+                                      const newTasks = [...tasksArray];
+                                      if (typeof newTasks[tIdx].item === 'object' && newTasks[tIdx].item !== null) {
+                                        newTasks[tIdx].item = { ...newTasks[tIdx].item, id: e.target.value };
+                                      } else {
+                                        newTasks[tIdx].item = e.target.value;
+                                      }
+                                      updateQuest(selection.id as string, { tasks: newTasks });
+                                    }}
+                                  />
+                                  <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
+                                    setNbtEditor({
+                                      title: 'Editar Item NBT (Task)',
+                                      value: JSON.stringify(tasksArray[tIdx].item, null, 2),
+                                      onSave: (newVal) => {
+                                        const newTasks = [...tasksArray];
+                                        newTasks[tIdx].item = newVal;
+                                        updateQuest(selection.id as string, { tasks: newTasks });
+                                      }
+                                    });
+                                  }}><Settings size={16} /></button>
+                                </div>
+                              </div>
+                              <div className="input-group" style={{ flex: 1 }}>
+                                <input type="number" className="input-field" value={task.count?.value || task.count || 1} placeholder="Cantidad"
+                                  onChange={(e) => {
+                                    const newTasks = [...tasksArray];
+                                    newTasks[tIdx].count = { __type: 'number', value: parseInt(e.target.value), suffix: 'L' };
+                                    updateQuest(selection.id as string, { tasks: newTasks });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <input type="checkbox" id={`consume_items_${tIdx}`}
+                                checked={task.consume_items || false}
+                                onChange={(e) => {
+                                  const newTasks = [...tasksArray];
+                                  newTasks[tIdx].consume_items = e.target.checked;
+                                  updateQuest(selection.id as string, { tasks: newTasks });
+                                }}
+                              />
+                              <label htmlFor={`consume_items_${tIdx}`} style={{ marginLeft: '8px', marginBottom: 0, fontSize: '0.8rem', cursor: 'pointer' }}>Consumir ítems al entregarlos</label>
+                            </div>
+                          </div>
+                        )}
+                        {task.type === 'checkmark' && (
+                          <div className="input-group">
+                            <input type="text" className="input-field" value={task.title || ''} placeholder="Título de la tarea"
+                              onChange={(e) => {
+                                const newTasks = [...tasksArray];
+                                newTasks[tIdx].title = e.target.value;
+                                updateQuest(selection.id as string, { tasks: newTasks });
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Rewards Section */}
+                <div style={{ marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h3 style={{ fontSize: '0.9rem' }}>Recompensas (Rewards)</h3>
+                    <button className="btn-icon" onClick={() => {
+                      const newRewards = [...rewardsArray, { id: generateHexId(), type: 'xp', xp: 10 }];
+                      updateQuest(selection.id as string, { rewards: newRewards });
+                    }}><Plus size={16} /></button>
+                  </div>
+                  {rewardsArray.map((reward: any, rIdx: number) => {
+                    if (!reward) return null;
+                    return (
+                      <div key={reward.id || rIdx} style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <select className="input-field" style={{ width: 'auto', padding: '2px 8px', height: 'auto', fontSize: '0.8rem' }}
+                            value={reward.type || 'xp'}
+                            onChange={(e) => {
+                              const newRewards = [...rewardsArray];
+                              const newType = e.target.value;
+                              newRewards[rIdx] = { ...newRewards[rIdx], type: newType };
+                              if (newType === 'xp' && newRewards[rIdx].xp === undefined) newRewards[rIdx].xp = 10;
+                              if (newType === 'xp_levels' && newRewards[rIdx].xp_levels === undefined) newRewards[rIdx].xp_levels = 5;
+                              if (newType === 'item' && !newRewards[rIdx].item) {
+                                newRewards[rIdx].item = "minecraft:stone";
+                                newRewards[rIdx].count = 1;
+                              }
+                              updateQuest(selection.id as string, { rewards: newRewards });
+                            }}
+                          >
+                            <option value="xp">XP</option>
+                            <option value="xp_levels">XP Levels</option>
+                            <option value="item">Item</option>
+                          </select>
+                          <Trash2 size={14} style={{ cursor: 'pointer', color: 'var(--danger-color)' }} onClick={() => {
+                            const newRewards = [...rewardsArray];
+                            newRewards.splice(rIdx, 1);
+                            updateQuest(selection.id as string, { rewards: newRewards });
+                          }} />
+                        </div>
+                        {reward.type === 'xp' && (
+                          <div className="input-group">
+                            <input type="number" className="input-field" value={reward.xp || 0} placeholder="Cantidad de XP"
+                              onChange={(e) => {
+                                const newRewards = [...rewardsArray];
+                                newRewards[rIdx].xp = parseInt(e.target.value);
+                                updateQuest(selection.id as string, { rewards: newRewards });
+                              }}
+                            />
+                          </div>
+                        )}
+                        {reward.type === 'xp_levels' && (
+                          <div className="input-group">
+                            <input type="number" className="input-field" value={reward.xp_levels || 0} placeholder="Niveles de XP"
+                              onChange={(e) => {
+                                const newRewards = [...rewardsArray];
+                                newRewards[rIdx].xp_levels = parseInt(e.target.value);
+                                updateQuest(selection.id as string, { rewards: newRewards });
+                              }}
+                            />
+                          </div>
+                        )}
+                        {reward.type === 'item' && (
+                          <div className="row">
+                            <div className="input-group" style={{ flex: 2 }}>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <input type="text" className="input-field" value={typeof reward.item === 'string' ? reward.item : (reward.item?.id || '')} placeholder="Item (ej. minecraft:dirt)" 
+                                    onChange={(e) => {
+                                      const newRewards = [...rewardsArray];
+                                      if (typeof newRewards[rIdx].item === 'object' && newRewards[rIdx].item !== null) {
+                                        newRewards[rIdx].item = { ...newRewards[rIdx].item, id: e.target.value };
+                                      } else {
+                                        newRewards[rIdx].item = e.target.value;
+                                      }
+                                      updateQuest(selection.id as string, { rewards: newRewards });
+                                    }}
+                                  />
+                                  <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
+                                    setNbtEditor({
+                                      title: 'Editar Item NBT (Reward)',
+                                      value: JSON.stringify(rewardsArray[rIdx].item, null, 2),
+                                      onSave: (newVal) => {
+                                        const newRewards = [...rewardsArray];
+                                        newRewards[rIdx].item = newVal;
+                                        updateQuest(selection.id as string, { rewards: newRewards });
+                                      }
+                                    });
+                                  }}><Settings size={16} /></button>
+                                </div>
+                              </div>
+                            <div className="input-group" style={{ flex: 1 }}>
+                              <input type="number" className="input-field" value={reward.count || 1} placeholder="Cantidad"
+                                onChange={(e) => {
+                                  const newRewards = [...rewardsArray];
+                                  newRewards[rIdx].count = parseInt(e.target.value);
+                                  updateQuest(selection.id as string, { rewards: newRewards });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Delete Quest Section */}
+                <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <button className="btn-icon" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px' }} onClick={() => deleteQuest(selection.id as string)}>
+                    <Trash2 size={16} /> Eliminar Misión
+                  </button>
+                </div>
+
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+    {nbtEditor && (
+      <div className="modal-overlay" onClick={() => setNbtEditor(null)}>
+        <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2 style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{nbtEditor.title}</h2>
+            <button className="btn-icon" onClick={() => setNbtEditor(null)}>×</button>
+          </div>
+          <div className="modal-body" style={{ height: '300px' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+              Edita el objeto en formato JSON. Al guardar, se convertirá y escribirá como objeto SNBT.
+            </p>
+            <textarea 
+              className="input-field" 
+              style={{ flexGrow: 1, fontFamily: 'monospace', resize: 'vertical' }}
+              value={nbtEditor.value}
+              onChange={e => setNbtEditor({...nbtEditor, value: e.target.value})}
+            />
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={() => setNbtEditor(null)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={() => {
+              try {
+                const parsed = JSON.parse(nbtEditor.value);
+                nbtEditor.onSave(parsed);
+                setNbtEditor(null);
+              } catch (e: any) {
+                alert('Error al parsear JSON: ' + e.message);
+              }
+            }}>Guardar NBT</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
+export default App;
