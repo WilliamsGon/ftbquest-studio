@@ -59,7 +59,7 @@ const getCandidateUrls = (icon: any): string[] => {
 };
 
 // Componente para cargar texturas de FTB extraídas
-const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: number }> = ({ icon, width, height, color }) => {
+const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: number, opacity?: number }> = ({ icon, width, height, color, opacity = 1.0 }) => {
   const candidates = React.useMemo(() => getCandidateUrls(icon), [icon]);
   const [candidateIdx, setCandidateIdx] = useState(0);
   const imageRef = useRef<any>(null);
@@ -104,6 +104,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
         height={height}
         offsetX={width / 2}
         offsetY={height / 2}
+        opacity={opacity}
         filters={hasColorFilter ? [Konva.Filters.RGB] : undefined}
         red={r}
         green={g}
@@ -497,7 +498,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   }}
                 >
                   {/* Intentar renderizar la textura */}
-                  <FtbTexture icon={img.image} width={w} height={h} color={img.color?.value ?? img.color} />
+                  <FtbTexture 
+                    icon={img.image} 
+                    width={w} 
+                    height={h} 
+                    color={img.color?.value ?? img.color} 
+                    opacity={img.alpha !== undefined ? getDValue(img.alpha?.value ?? img.alpha) / 255 : 1.0}
+                  />
                   
                   {/* Borde de selección */}
                   {isSelected && (

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Download, Layers, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2 } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,6 +28,17 @@ function App() {
   const [layers, setLayers] = useState({ quests: true, images: true });
   const [rawSelection, setRawSelection] = useState<{ type: 'quest' | 'image' | null, ids: (string | number)[] }>({ type: null, ids: [] });
   
+  // Historial de cambios
+  const [history, setHistory] = useState<{ quests: any[]; images: any[] }[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyRef = useRef(history);
+  const historyIndexRef = useRef(historyIndex);
+
+  useEffect(() => {
+    historyRef.current = history;
+    historyIndexRef.current = historyIndex;
+  }, [history, historyIndex]);
+
   const selection = {
     type: rawSelection.type,
     ids: rawSelection.ids,
@@ -45,6 +56,78 @@ function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Función unificada para actualizar estado y guardar en el historial
+  const updateState = (newQuests: any[], newImages: any[], bypassHistory = false) => {
+    setQuests(newQuests);
+    setImages(newImages);
+    
+    if (!bypassHistory) {
+      const idx = historyIndexRef.current;
+      const hist = historyRef.current;
+      const cleanHistory = hist.slice(0, idx + 1);
+      
+      const clonedQuests = JSON.parse(JSON.stringify(newQuests));
+      const clonedImages = JSON.parse(JSON.stringify(newImages));
+      
+      const nextHistory = [...cleanHistory, { quests: clonedQuests, images: clonedImages }];
+      setHistory(nextHistory);
+      setHistoryIndex(cleanHistory.length);
+    }
+  };
+
+  const undo = () => {
+    const idx = historyIndexRef.current;
+    const hist = historyRef.current;
+    if (idx > 0) {
+      const prevIndex = idx - 1;
+      const prevRecord = hist[prevIndex];
+      setQuests(JSON.parse(JSON.stringify(prevRecord.quests)));
+      setImages(JSON.parse(JSON.stringify(prevRecord.images)));
+      setHistoryIndex(prevIndex);
+      setSelection({ type: null, ids: [] });
+    }
+  };
+
+  const redo = () => {
+    const idx = historyIndexRef.current;
+    const hist = historyRef.current;
+    if (idx < hist.length - 1) {
+      const nextIndex = idx + 1;
+      const nextRecord = hist[nextIndex];
+      setQuests(JSON.parse(JSON.stringify(nextRecord.quests)));
+      setImages(JSON.parse(JSON.stringify(nextRecord.images)));
+      setHistoryIndex(nextIndex);
+      setSelection({ type: null, ids: [] });
+    }
+  };
+
+  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' || e.key === 'Z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+            redo();
+          } else {
+            undo();
+          }
+        } else if (e.key === 'y' || e.key === 'Y') {
+          e.preventDefault();
+          redo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -57,8 +140,18 @@ function App() {
         const parsed = parseSNBT(text);
         setSnbtData(parsed);
         
-        if (parsed.quests && Array.isArray(parsed.quests)) setQuests(parsed.quests);
-        if (parsed.images && Array.isArray(parsed.images)) setImages(parsed.images);
+        const initialQuests = parsed.quests && Array.isArray(parsed.quests) ? parsed.quests : [];
+        const initialImages = parsed.images && Array.isArray(parsed.images) ? parsed.images : [];
+        
+        setQuests(initialQuests);
+        setImages(initialImages);
+        
+        // Inicializar historial con estado limpio
+        setHistory([{ 
+          quests: JSON.parse(JSON.stringify(initialQuests)), 
+          images: JSON.parse(JSON.stringify(initialImages)) 
+        }]);
+        setHistoryIndex(0);
       } catch (err) {
         console.error("Error parsing SNBT:", err);
         alert("Error al parsear el archivo SNBT. Revisa la consola.");
@@ -92,7 +185,8 @@ function App() {
       tasks: [],
       rewards: []
     };
-    setQuests([...quests, newQuest]);
+    const nextQuests = [...quests, newQuest];
+    updateState(nextQuests, images);
     setSelection({ type: 'quest', id: newQuest.id });
   };
 
@@ -106,13 +200,14 @@ function App() {
       rotation: { __type: 'number', value: 0.0, suffix: 'd' },
       order: 1
     };
-    setImages([...images, newImage]);
+    const nextImages = [...images, newImage];
+    updateState(quests, nextImages);
     setSelection({ type: 'image', id: images.length });
   };
 
   const updateQuest = (idOrUpdatesList: string | { id: string, updates: any }[], updates?: any) => {
     if (Array.isArray(idOrUpdatesList)) {
-      setQuests(quests.map(q => {
+      const nextQuests = quests.map(q => {
         const found = idOrUpdatesList.find(u => u.id === q.id);
         if (found) {
           const u = found.updates;
@@ -124,10 +219,11 @@ function App() {
           };
         }
         return q;
-      }));
+      });
+      updateState(nextQuests, images);
     } else {
       const id = idOrUpdatesList;
-      setQuests(quests.map(q => {
+      const nextQuests = quests.map(q => {
         if (q.id === id) {
           return {
             ...q,
@@ -137,17 +233,19 @@ function App() {
           };
         }
         return q;
-      }));
+      });
+      updateState(nextQuests, images);
     }
   };
 
   const deleteQuest = (id: string) => {
-    setQuests(quests.filter(q => q.id !== id));
+    const nextQuests = quests.filter(q => q.id !== id);
+    updateState(nextQuests, images);
     setSelection({ type: null, id: null });
   };
 
   const updateImage = (indexOrUpdatesList: number | { index: number, updates: any }[], updates?: any) => {
-    const newImages = [...images];
+    const newImages = JSON.parse(JSON.stringify(images));
     if (Array.isArray(indexOrUpdatesList)) {
       indexOrUpdatesList.forEach(({ index, updates: u }) => {
         if (newImages[index]) {
@@ -155,8 +253,11 @@ function App() {
           if (u.y !== undefined) newImages[index].y = { __type: 'number', value: u.y, suffix: 'd' };
           if (u.width !== undefined) newImages[index].width = { __type: 'number', value: u.width, suffix: 'd' };
           if (u.height !== undefined) newImages[index].height = { __type: 'number', value: u.height, suffix: 'd' };
+          if (u.rotation !== undefined) newImages[index].rotation = { __type: 'number', value: u.rotation, suffix: 'd' };
+          if (u.alpha !== undefined) newImages[index].alpha = { __type: 'number', value: u.alpha, suffix: '' };
           if (u.order !== undefined) newImages[index].order = { __type: 'number', value: u.order, suffix: '' };
           if (u.image !== undefined) newImages[index].image = u.image;
+          if (u.color !== undefined) newImages[index].color = u.color;
         }
       });
     } else {
@@ -166,11 +267,14 @@ function App() {
         if (updates.y !== undefined) newImages[index].y = { __type: 'number', value: updates.y, suffix: 'd' };
         if (updates.width !== undefined) newImages[index].width = { __type: 'number', value: updates.width, suffix: 'd' };
         if (updates.height !== undefined) newImages[index].height = { __type: 'number', value: updates.height, suffix: 'd' };
+        if (updates.rotation !== undefined) newImages[index].rotation = { __type: 'number', value: updates.rotation, suffix: 'd' };
+        if (updates.alpha !== undefined) newImages[index].alpha = { __type: 'number', value: updates.alpha, suffix: '' };
         if (updates.order !== undefined) newImages[index].order = { __type: 'number', value: updates.order, suffix: '' };
         if (updates.image !== undefined) newImages[index].image = updates.image;
+        if (updates.color !== undefined) newImages[index].color = updates.color;
       }
     }
-    setImages(newImages);
+    updateState(quests, newImages);
   };
 
   return (
@@ -190,6 +294,28 @@ function App() {
               <Download size={16} /> Exportar
             </button>
           </div>
+          {snbtData && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ flex: 1, padding: '6px 12px', fontSize: '0.8rem' }}
+                onClick={undo}
+                disabled={historyIndex <= 0}
+                title="Deshacer (Ctrl+Z)"
+              >
+                Deshacer
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                style={{ flex: 1, padding: '6px 12px', fontSize: '0.8rem' }}
+                onClick={redo}
+                disabled={historyIndex >= history.length - 1}
+                title="Rehacer (Ctrl+Y)"
+              >
+                Rehacer
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="content-section">
@@ -304,6 +430,27 @@ function App() {
                   <input type="number" step="0.5" className="input-field" 
                     value={images[selection.id as number]?.height?.value ?? 2} 
                     onChange={(e) => updateImage(selection.id as number, { height: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="row">
+                <div className="input-group">
+                  <label>Rotación (Grados)</label>
+                  <input type="number" step="5" className="input-field" 
+                    value={images[selection.id as number]?.rotation?.value ?? images[selection.id as number]?.rotation ?? 0} 
+                    onChange={(e) => updateImage(selection.id as number, { rotation: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Opacidad (Alpha 0-255)</label>
+                  <input type="number" min="0" max="255" className="input-field" 
+                    value={images[selection.id as number]?.alpha?.value ?? images[selection.id as number]?.alpha ?? 255} 
+                    onChange={(e) => {
+                      let val = parseInt(e.target.value);
+                      if (isNaN(val)) val = 255;
+                      val = Math.max(0, Math.min(255, val));
+                      updateImage(selection.id as number, { alpha: val });
+                    }}
                   />
                 </div>
               </div>
