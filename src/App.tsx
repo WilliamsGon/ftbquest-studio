@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Download, Layers, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
@@ -325,7 +325,17 @@ function App() {
     if (!snbtData) return;
     const newData = { ...snbtData };
     newData.quests = quests;
-    newData.images = images;
+    
+    // Normalizar las barras invertidas "\\" a "/" en los paths de las imágenes
+    newData.images = images.map(img => {
+      if (img && typeof img.image === 'string') {
+        return {
+          ...img,
+          image: img.image.replace(/\\/g, '/')
+        };
+      }
+      return img;
+    });
     
     const outputSNBT = stringifySNBT(newData);
     const blob = new Blob([outputSNBT], { type: 'text/plain' });
@@ -709,6 +719,76 @@ function App() {
                   <AlignEndHorizontal size={18} />
                 </button>
               </div>
+              {(() => {
+                const selectedImages = selection.items.filter(item => item.type === 'image');
+                if (selectedImages.length === 0) return null;
+                
+                const firstImgColor = images[selectedImages[0].id as number]?.color;
+                const shareSameColor = selectedImages.every(
+                  img => images[img.id as number]?.color === firstImgColor
+                );
+                const displayColor = shareSameColor ? decimalToHexColor(firstImgColor) : '#ffffff';
+
+                return (
+                  <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                      Color común ({selectedImages.length} {selectedImages.length === 1 ? 'imagen' : 'imágenes'})
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input 
+                        type="color" 
+                        className="color-picker-input" 
+                        value={displayColor}
+                        onChange={(e) => {
+                          const hex = e.target.value;
+                          const dec = hexColorToDecimal(hex);
+                          const updatesList = selectedImages.map(img => ({
+                            index: img.id as number,
+                            updates: { color: dec }
+                          }));
+                          updateImage(updatesList);
+                        }}
+                      />
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        style={{ fontFamily: 'monospace', textTransform: 'uppercase' }}
+                        placeholder={shareSameColor ? "" : "Mixto"}
+                        value={shareSameColor ? displayColor : ''}
+                        onChange={(e) => {
+                          let val = e.target.value;
+                          if (!val.startsWith('#')) val = '#' + val;
+                          if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                            const dec = hexColorToDecimal(val);
+                            const updatesList = selectedImages.map(img => ({
+                              index: img.id as number,
+                              updates: { color: dec }
+                            }));
+                            updateImage(updatesList);
+                          }
+                        }}
+                      />
+                      <button 
+                        className="btn-icon" 
+                        title="Quitar color a todas" 
+                        onClick={() => {
+                          const newImages = JSON.parse(JSON.stringify(images));
+                          selectedImages.forEach(img => {
+                            const imgIndex = img.id as number;
+                            if (newImages[imgIndex]) {
+                              delete newImages[imgIndex].color;
+                            }
+                          });
+                          updateState(quests, newImages);
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                 {selection.items.some(item => item.type === 'image') && (
                   <button 

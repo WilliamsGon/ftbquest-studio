@@ -151,7 +151,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
 
   // Arrastre múltiple (dragOffset en tiempo real)
   const [draggingId, setDraggingId] = useState<string | number | null>(null);
-  const [draggingType, setDraggingType] = useState<'quest' | 'image' | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number, y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
 
@@ -349,7 +348,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
         onMouseLeave={() => {
           onPointerPosChange?.(null);
         }}
-        onMouseUp={(e) => {
+        onMouseUp={() => {
           if (startPointerPos && selectionRect) {
             // Evaluar intersecciones al soltar el mouse
             const selectedImageIndices: number[] = [];
@@ -496,7 +495,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
                     }
                     setDraggingId(idx);
-                    setDraggingType('image');
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
@@ -570,7 +568,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       }
                     }
                     setDraggingId(null);
-                    setDraggingType(null);
                     setDragStartPos(null);
                     setDragOffset({ x: 0, y: 0 });
                   }}
@@ -650,7 +647,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       setSelection({ type: 'quest', ids: [q.id], items: [{ type: 'quest', id: q.id }] });
                     }
                     setDraggingId(q.id);
-                    setDraggingType('quest');
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
@@ -724,7 +720,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       }
                     }
                     setDraggingId(null);
-                    setDraggingType(null);
                     setDragStartPos(null);
                     setDragOffset({ x: 0, y: 0 });
                   }}
