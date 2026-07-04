@@ -499,65 +499,145 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                     setDragOffset({ x: 0, y: 0 });
                   }}
                   onDragMove={(e) => {
-                    if (snapToGrid) {
-                      const snapPixels = 0.5 * SCALE_FACTOR;
-                      const x = e.target.x();
-                      const y = e.target.y();
-                      const snappedX = Math.round(x / snapPixels) * snapPixels;
-                      const snappedY = Math.round(y / snapPixels) * snapPixels;
-                      e.target.x(snappedX);
-                      e.target.y(snappedY);
-                    }
-                    if (dragStartPos) {
-                      const deltaX = e.target.x() - dragStartPos.x;
-                      const deltaY = e.target.y() - dragStartPos.y;
-                      setDragOffset({ x: deltaX, y: deltaY });
+                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                    if (isImgSelected && selection.items.length > 1) {
+                      // Buscar si hay misiones seleccionadas
+                      const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
+                      if (anchorQuest && snapToGrid) {
+                        const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+                        const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
+                        
+                        const qOrigX = getDValue(anchorQuest.x) * SCALE_FACTOR;
+                        const qOrigY = getDValue(anchorQuest.y) * SCALE_FACTOR;
+                        
+                        // Desplazamiento bruto
+                        const rawDeltaX = e.target.x() - dragStartPos!.x;
+                        const rawDeltaY = e.target.y() - dragStartPos!.y;
+                        
+                        // Posición tentativa de la misión
+                        const qTentX = qOrigX + rawDeltaX;
+                        const qTentY = qOrigY + rawDeltaY;
+                        
+                        const qSnappedX = Math.round(qTentX / snapPixels) * snapPixels;
+                        const qSnappedY = Math.round(qTentY / snapPixels) * snapPixels;
+                        
+                        const realDeltaX = qSnappedX - qOrigX;
+                        const realDeltaY = qSnappedY - qOrigY;
+                        
+                        e.target.x(dragStartPos!.x + realDeltaX);
+                        e.target.y(dragStartPos!.y + realDeltaY);
+                        setDragOffset({ x: realDeltaX, y: realDeltaY });
+                      } else {
+                        // Comportamiento normal con o sin snap
+                        if (snapToGrid) {
+                          const snapPixels = 0.5 * SCALE_FACTOR;
+                          const x = e.target.x();
+                          const y = e.target.y();
+                          const snappedX = Math.round(x / snapPixels) * snapPixels;
+                          const snappedY = Math.round(y / snapPixels) * snapPixels;
+                          e.target.x(snappedX);
+                          e.target.y(snappedY);
+                          setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
+                        } else {
+                          setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
+                        }
+                      }
+                    } else {
+                      // Arrastre individual sin selección múltiple
+                      if (snapToGrid) {
+                        const snapPixels = 0.5 * SCALE_FACTOR;
+                        const x = e.target.x();
+                        const y = e.target.y();
+                        const snappedX = Math.round(x / snapPixels) * snapPixels;
+                        const snappedY = Math.round(y / snapPixels) * snapPixels;
+                        e.target.x(snappedX);
+                        e.target.y(snappedY);
+                      }
+                      if (dragStartPos) {
+                        const deltaX = e.target.x() - dragStartPos.x;
+                        const deltaY = e.target.y() - dragStartPos.y;
+                        setDragOffset({ x: deltaX, y: deltaY });
+                      }
                     }
                   }}
                   onDragEnd={(e) => {
                     if (dragStartPos) {
-                      let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                      let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
-
-                      if (snapToGrid) {
-                        deltaX = Math.round(deltaX / 0.5) * 0.5;
-                        deltaY = Math.round(deltaY / 0.5) * 0.5;
-                      }
-
                       const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
                       if (isImgSelected && selection.items.length > 1) {
-                        // Actualizar imágenes seleccionadas
-                        const imageUpdates = selection.items
-                          .filter(item => item.type === 'image')
-                          .map(item => {
-                            const imgObj = images[item.id as number];
-                            return {
-                              index: item.id as number,
-                              updates: {
-                                x: getDValue(imgObj.x) + deltaX,
-                                y: getDValue(imgObj.y) + deltaY
-                              }
-                            };
-                          });
+                        // Buscar si hay misiones seleccionadas
+                        const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
                         
-                        // Actualizar quests seleccionadas
-                        const questUpdates = selection.items
-                          .filter(item => item.type === 'quest')
-                          .map(item => {
-                            const qObj = quests.find(q => q.id === item.id);
-                            return {
-                              id: item.id as string,
-                              updates: {
-                                x: getDValue(qObj.x) + deltaX,
-                                y: getDValue(qObj.y) + deltaY
-                              }
-                            };
-                          });
+                        let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
+                        let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
 
-                        if (imageUpdates.length > 0) updateImage(imageUpdates);
-                        if (questUpdates.length > 0) updateQuest(questUpdates);
+                        if (anchorQuest) {
+                          // Si hay misión ancla, ella manda
+                          const qOrigX = getDValue(anchorQuest.x);
+                          const qOrigY = getDValue(anchorQuest.y);
+                          
+                          let qFinalX = qOrigX + deltaX;
+                          let qFinalY = qOrigY + deltaY;
+                          
+                          if (snapToGrid) {
+                            const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+                            const snapStep = sizeVal / 2;
+                            qFinalX = Math.round(qFinalX / snapStep) * snapStep;
+                            qFinalY = Math.round(qFinalY / snapStep) * snapStep;
+                          }
+                          
+                          // Actualizar quests seleccionadas relativamente
+                          const questUpdates = selection.items
+                            .filter(item => item.type === 'quest')
+                            .map(item => {
+                              const qObj = quests.find(q => q.id === item.id);
+                              const newQx = item.id === anchorQuest.id ? qFinalX : getDValue(qObj.x) + (qFinalX - qOrigX);
+                              const newQy = item.id === anchorQuest.id ? qFinalY : getDValue(qObj.y) + (qFinalY - qOrigY);
+                              return {
+                                id: item.id as string,
+                                updates: { x: newQx, y: newQy }
+                              };
+                            });
+                          
+                          // A todas las imágenes seleccionadas les asignamos exactamente la misma posición final de la misión ancla si snapToGrid está activo. Si no, las movemos relativamente.
+                          const imageUpdates = selection.items
+                            .filter(item => item.type === 'image')
+                            .map(item => {
+                              const imgObj = images[item.id as number];
+                              return {
+                                index: item.id as number,
+                                updates: {
+                                  x: snapToGrid ? qFinalX : getDValue(imgObj.x) + deltaX,
+                                  y: snapToGrid ? qFinalY : getDValue(imgObj.y) + deltaY
+                                }
+                              };
+                            });
+                            
+                          if (imageUpdates.length > 0) updateImage(imageUpdates);
+                          if (questUpdates.length > 0) updateQuest(questUpdates);
+                        } else {
+                          // Comportamiento normal para imágenes múltiples sin misiones en la selección
+                          if (snapToGrid) {
+                            deltaX = Math.round(deltaX / 0.5) * 0.5;
+                            deltaY = Math.round(deltaY / 0.5) * 0.5;
+                          }
+                          
+                          const imageUpdates = selection.items
+                            .filter(item => item.type === 'image')
+                            .map(item => {
+                              const imgObj = images[item.id as number];
+                              return {
+                                index: item.id as number,
+                                updates: {
+                                  x: getDValue(imgObj.x) + deltaX,
+                                  y: getDValue(imgObj.y) + deltaY
+                                }
+                              };
+                            });
+                          
+                          if (imageUpdates.length > 0) updateImage(imageUpdates);
+                        }
                       } else {
-                        // Arrastre individual fuera de selección
+                        // Arrastre individual de imagen
                         let newX = e.target.x() / SCALE_FACTOR;
                         let newY = e.target.y() / SCALE_FACTOR;
                         if (snapToGrid) {
@@ -651,34 +731,57 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                     setDragOffset({ x: 0, y: 0 });
                   }}
                   onDragMove={(e) => {
-                    if (snapToGrid) {
-                      const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
-                      const x = e.target.x();
-                      const y = e.target.y();
-                      const snappedX = Math.round(x / snapPixels) * snapPixels;
-                      const snappedY = Math.round(y / snapPixels) * snapPixels;
-                      e.target.x(snappedX);
-                      e.target.y(snappedY);
-                    }
-                    if (dragStartPos) {
-                      const deltaX = e.target.x() - dragStartPos.x;
-                      const deltaY = e.target.y() - dragStartPos.y;
-                      setDragOffset({ x: deltaX, y: deltaY });
+                    const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+                    if (isQSelected && selection.items.length > 1) {
+                      // Esta misión es la que se arrastra, por lo tanto actúa como la ancla del snap
+                      if (snapToGrid) {
+                        const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
+                        const x = e.target.x();
+                        const y = e.target.y();
+                        const snappedX = Math.round(x / snapPixels) * snapPixels;
+                        const snappedY = Math.round(y / snapPixels) * snapPixels;
+                        e.target.x(snappedX);
+                        e.target.y(snappedY);
+                        setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
+                      } else {
+                        setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
+                      }
+                    } else {
+                      // Comportamiento individual normal
+                      if (snapToGrid) {
+                        const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
+                        const x = e.target.x();
+                        const y = e.target.y();
+                        const snappedX = Math.round(x / snapPixels) * snapPixels;
+                        const snappedY = Math.round(y / snapPixels) * snapPixels;
+                        e.target.x(snappedX);
+                        e.target.y(snappedY);
+                      }
+                      if (dragStartPos) {
+                        const deltaX = e.target.x() - dragStartPos.x;
+                        const deltaY = e.target.y() - dragStartPos.y;
+                        setDragOffset({ x: deltaX, y: deltaY });
+                      }
                     }
                   }}
                   onDragEnd={(e) => {
                     if (dragStartPos) {
-                      let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                      let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
-
-                      if (snapToGrid) {
-                        deltaX = Math.round(deltaX / 0.5) * 0.5;
-                        deltaY = Math.round(deltaY / 0.5) * 0.5;
-                      }
-
                       const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                       if (isQSelected && selection.items.length > 1) {
-                        // Actualizar misiones seleccionadas
+                        // Esta misión es la ancla del arrastre
+                        let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
+                        let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+
+                        if (snapToGrid) {
+                          const snapStep = sizeVal / 2;
+                          deltaX = Math.round(deltaX / snapStep) * snapStep;
+                          deltaY = Math.round(deltaY / snapStep) * snapStep;
+                        }
+
+                        const qFinalX = getDValue(q.x) + deltaX;
+                        const qFinalY = getDValue(q.y) + deltaY;
+
+                        // Actualizar todas las misiones seleccionadas de forma relativa
                         const questUpdates = selection.items
                           .filter(item => item.type === 'quest')
                           .map(item => {
@@ -686,13 +789,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                             return {
                               id: item.id as string,
                               updates: {
-                                x: getDValue(qObj.x) + deltaX,
-                                y: getDValue(qObj.y) + deltaY
+                                x: getDValue(qObj.x) + (item.id === q.id ? deltaX : (qFinalX - getDValue(q.x))),
+                                y: getDValue(qObj.y) + (item.id === q.id ? deltaY : (qFinalY - getDValue(q.y)))
                               }
                             };
                           });
                         
-                        // Actualizar imágenes seleccionadas
+                        // A todas las imágenes seleccionadas les asignamos exactamente la misma posición final de la misión arrastrada si snapToGrid está activo. Si no, las movemos relativamente.
                         const imageUpdates = selection.items
                           .filter(item => item.type === 'image')
                           .map(item => {
@@ -700,8 +803,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                             return {
                               index: item.id as number,
                               updates: {
-                                x: getDValue(imgObj.x) + deltaX,
-                                y: getDValue(imgObj.y) + deltaY
+                                x: snapToGrid ? qFinalX : getDValue(imgObj.x) + deltaX,
+                                y: snapToGrid ? qFinalY : getDValue(imgObj.y) + deltaY
                               }
                             };
                           });
@@ -709,6 +812,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                         if (questUpdates.length > 0) updateQuest(questUpdates);
                         if (imageUpdates.length > 0) updateImage(imageUpdates);
                       } else {
+                        // Arrastre individual de misión
                         let newX = e.target.x() / SCALE_FACTOR;
                         let newY = e.target.y() / SCALE_FACTOR;
                         if (snapToGrid) {
