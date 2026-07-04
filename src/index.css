@@ -357,3 +357,32 @@ h1, h2, h3 {
   background: rgba(255, 255, 255, 0.25);
   color: white;
 }
+
+/* Selector de color personalizado */
+.color-picker-input {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.2);
+  width: 40px;
+  height: 38px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.color-picker-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.color-picker-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}

@@ -6,6 +6,18 @@ import { EditorCanvas } from './components/EditorCanvas';
 
 const generateHexId = () => uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
 
+const decimalToHexColor = (val: any): string => {
+  if (val === undefined || val === null) return '#ffffff';
+  const num = typeof val === 'object' && val.__type === 'number' ? val.value : Number(val);
+  if (isNaN(num)) return '#ffffff';
+  return '#' + num.toString(16).padStart(6, '0');
+};
+
+const hexColorToDecimal = (hex: string): number => {
+  const cleanHex = hex.replace('#', '');
+  return parseInt(cleanHex, 16);
+};
+
 function App() {
   const [snbtData, setSnbtData] = useState<any>(null);
   const [filename, setFilename] = useState<string>('Sin cargar');
@@ -301,6 +313,33 @@ function App() {
                   value={images[selection.id as number]?.order?.value ?? images[selection.id as number]?.order ?? 1} 
                   onChange={(e) => updateImage(selection.id as number, { order: parseInt(e.target.value) })}
                 />
+              </div>
+              <div className="input-group">
+                <label>Color de Recolorización</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input type="color" className="color-picker-input" 
+                    value={decimalToHexColor(images[selection.id as number]?.color)} 
+                    onChange={(e) => updateImage(selection.id as number, { color: hexColorToDecimal(e.target.value) })}
+                  />
+                  <input type="text" className="input-field" style={{ fontFamily: 'monospace', textTransform: 'uppercase' }}
+                    value={decimalToHexColor(images[selection.id as number]?.color)} 
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      if (!val.startsWith('#')) val = '#' + val;
+                      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                        updateImage(selection.id as number, { color: hexColorToDecimal(val) });
+                      }
+                    }}
+                  />
+                  {images[selection.id as number]?.color !== undefined && (
+                    <button className="btn-icon" title="Quitar Color" onClick={() => {
+                      const imgIndex = selection.id as number;
+                      const newImages = [...images];
+                      delete newImages[imgIndex].color;
+                      setImages(newImages);
+                    }}><Trash2 size={16} /></button>
+                  )}
+                </div>
               </div>
             </div>
           )}

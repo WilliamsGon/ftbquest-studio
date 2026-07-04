@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
 import { MousePointer, Hand } from 'lucide-react';
+import Konva from 'konva';
 
 interface CanvasProps {
   quests: any[];
@@ -58,9 +59,10 @@ const getCandidateUrls = (icon: any): string[] => {
 };
 
 // Componente para cargar texturas de FTB extraídas
-const FtbTexture: React.FC<{ icon: any, width: number, height: number }> = ({ icon, width, height }) => {
+const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: number }> = ({ icon, width, height, color }) => {
   const candidates = React.useMemo(() => getCandidateUrls(icon), [icon]);
   const [candidateIdx, setCandidateIdx] = useState(0);
+  const imageRef = useRef<any>(null);
 
   useEffect(() => {
     setCandidateIdx(0);
@@ -75,14 +77,37 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number }> = ({ ic
     }
   }, [status, candidateIdx, candidates]);
 
+  // Cachear para que los filtros tengan efecto
+  useEffect(() => {
+    if (status === 'loaded' && imageRef.current && color !== undefined && color !== 16777215) {
+      imageRef.current.cache();
+    }
+  }, [image, status, color, width, height]);
+
   if (status === 'loaded' && image) {
+    const hasColorFilter = color !== undefined && color !== 16777215;
+    let r = 255;
+    let g = 255;
+    let b = 255;
+    
+    if (hasColorFilter) {
+      r = (color >> 16) & 255;
+      g = (color >> 8) & 255;
+      b = color & 255;
+    }
+
     return (
       <KonvaImage
+        ref={imageRef}
         image={image}
         width={width}
         height={height}
         offsetX={width / 2}
         offsetY={height / 2}
+        filters={hasColorFilter ? [Konva.Filters.RGB] : undefined}
+        red={r}
+        green={g}
+        blue={b}
       />
     );
   }
@@ -472,7 +497,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   }}
                 >
                   {/* Intentar renderizar la textura */}
-                  <FtbTexture icon={img.image} width={w} height={h} />
+                  <FtbTexture icon={img.image} width={w} height={h} color={img.color?.value ?? img.color} />
                   
                   {/* Borde de selección */}
                   {isSelected && (
