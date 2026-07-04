@@ -8,8 +8,17 @@ interface CanvasProps {
   quests: any[];
   images: any[];
   layersVisible: { quests: boolean; images: boolean };
-  selection: { type: 'quest' | 'image' | null; ids: (string | number)[] };
-  setSelection: (sel: { type: 'quest' | 'image' | null; ids: (string | number)[], id?: string | number | null }) => void;
+  selection: { 
+    type: 'quest' | 'image' | 'mixed' | null; 
+    ids: (string | number)[]; 
+    items: { type: 'quest' | 'image'; id: string | number }[];
+  };
+  setSelection: (sel: { 
+    type: 'quest' | 'image' | 'mixed' | null; 
+    ids: (string | number)[]; 
+    id?: string | number | null;
+    items?: { type: 'quest' | 'image'; id: string | number }[];
+  }) => void;
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
 }
@@ -298,7 +307,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               const localY = (pointer.y - stage.y()) / stage.scaleY();
               setStartPointerPos({ x: localX, y: localY });
               setSelectionRect({ x: localX, y: localY, w: 0, h: 0 });
-              setSelection({ type: null, ids: [] });
+              setSelection({ type: null, ids: [], items: [] });
             }
           }
         }}
@@ -306,28 +315,26 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
           if (!startPointerPos || !selectionRect) return;
           const stage = e.target.getStage();
           if (!stage) return;
-          
           const pointer = stage.getPointerPosition();
           if (pointer) {
             const localX = (pointer.x - stage.x()) / stage.scaleX();
             const localY = (pointer.y - stage.y()) / stage.scaleY();
-            
             setSelectionRect({
               x: Math.min(startPointerPos.x, localX),
               y: Math.min(startPointerPos.y, localY),
-              w: Math.abs(startPointerPos.x - localX),
-              h: Math.abs(startPointerPos.y - localY)
+              w: Math.abs(localX - startPointerPos.x),
+              h: Math.abs(localY - startPointerPos.y),
             });
           }
         }}
-        onMouseUp={() => {
-          if (selectionRect) {
-            // Calcular qué imágenes o misiones quedan dentro del rectángulo
+        onMouseUp={(e) => {
+          if (startPointerPos && selectionRect) {
+            // Evaluar intersecciones al soltar el mouse
             const selectedImageIndices: number[] = [];
             const selectedQuestIds: string[] = [];
 
-            // Solo seleccionamos si el área tiene algún tamaño mínimo para evitar falsos clicks
-            if (selectionRect.w > 5 && selectionRect.h > 5) {
+            // Solo evaluar si la caja de selección tiene algún tamaño mínimo para evitar falsos clicks
+            if (selectionRect.w > 3 || selectionRect.h > 3) {
               if (layersVisible.images) {
                 images.forEach((img, idx) => {
                   const imageX = getDValue(img.x) * SCALE_FACTOR;
@@ -335,7 +342,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   const w = getDValue(img.width) * SCALE_FACTOR;
                   const h = getDValue(img.height) * SCALE_FACTOR;
 
-                  // Bounding Box
                   const imgX1 = imageX - w / 2;
                   const imgX2 = imageX + w / 2;
                   const imgY1 = imageY - h / 2;
@@ -378,12 +384,24 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               }
             }
 
-            if (selectedImageIndices.length > 0) {
-              setSelection({ type: 'image', ids: selectedImageIndices });
-            } else if (selectedQuestIds.length > 0) {
-              setSelection({ type: 'quest', ids: selectedQuestIds });
+            const selectedItems: { type: 'quest' | 'image'; id: string | number }[] = [];
+            selectedImageIndices.forEach(idx => selectedItems.push({ type: 'image', id: idx }));
+            selectedQuestIds.forEach(id => selectedItems.push({ type: 'quest', id }));
+
+            if (selectedItems.length > 0) {
+              const hasQuests = selectedItems.some(i => i.type === 'quest');
+              const hasImages = selectedItems.some(i => i.type === 'image');
+              let type: 'quest' | 'image' | 'mixed' = 'mixed';
+              if (hasQuests && !hasImages) type = 'quest';
+              if (!hasQuests && hasImages) type = 'image';
+              
+              setSelection({ 
+                type, 
+                ids: selectedItems.map(i => i.id), 
+                items: selectedItems 
+              });
             } else {
-              setSelection({ type: null, ids: [] });
+              setSelection({ type: null, ids: [], items: [] });
             }
           }
           
@@ -393,7 +411,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
         onClick={(e) => {
           // Deseleccionar si se hace clic en el fondo
           if (e.target === e.target.getStage() && !startPointerPos) {
-            setSelection({ type: null, ids: [] });
+            setSelection({ type: null, ids: [], items: [] });
           }
         }}
       >
@@ -415,10 +433,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               const w = getDValue(img.width) * SCALE_FACTOR;
               const h = getDValue(img.height) * SCALE_FACTOR;
               const rot = getDValue(img.rotation);
-              const isSelected = selection.type === 'image' && selection.ids.includes(idx);
+              const isSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
 
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
-              const isOffsetApplied = isSelected && draggingId !== null && draggingId !== idx && draggingType === 'image';
+              const isOffsetApplied = isSelected && draggingId !== null && draggingId !== idx;
               const currentX = x + (isOffsetApplied ? dragOffset.x : 0);
               const currentY = y + (isOffsetApplied ? dragOffset.y : 0);
 
@@ -431,35 +449,36 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   draggable
                   onClick={(e) => {
                     e.cancelBubble = true;
-                    // Selección individual
+                    // Selección individual o múltiple con Shift
                     if (e.evt.shiftKey) {
-                      // Multi-selección manual con Shift
-                      if (selection.type === 'image') {
-                        const newIds = selection.ids.includes(idx)
-                          ? selection.ids.filter(id => id !== idx)
-                          : [...selection.ids, idx];
-                        setSelection({ type: 'image', ids: newIds });
+                      const isAlreadySelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                      let newItems = [];
+                      if (isAlreadySelected) {
+                        newItems = selection.items.filter(item => !(item.type === 'image' && item.id === idx));
                       } else {
-                        setSelection({ type: 'image', ids: [idx] });
+                        newItems = [...selection.items, { type: 'image' as const, id: idx }];
                       }
+                      
+                      const hasQuests = newItems.some(i => i.type === 'quest');
+                      const hasImages = newItems.some(i => i.type === 'image');
+                      const type = (hasQuests && hasImages) ? 'mixed' : (hasQuests ? 'quest' : (hasImages ? 'image' : null));
+                      setSelection({ type, ids: newItems.map(i => i.id), items: newItems });
                     } else {
-                      // Si no está ya seleccionado, seleccionarlo como único
-                      if (!selection.ids.includes(idx)) {
-                        setSelection({ type: 'image', ids: [idx] });
-                      }
+                      // Clic normal: Selecciona solo este
+                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
                     }
                   }}
                   onDragStart={(e) => {
-                    // Si no está en el grupo seleccionado, seleccionarlo a él solo
-                    if (!selection.ids.includes(idx) || selection.type !== 'image') {
-                      setSelection({ type: 'image', ids: [idx] });
+                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                    if (!isImgSelected) {
+                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
                     }
                     setDraggingId(idx);
                     setDraggingType('image');
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
-                  onDragMove={(e) => {
+                  onMouseMove={(e) => {
                     if (dragStartPos) {
                       const deltaX = e.target.x() - dragStartPos.x;
                       const deltaY = e.target.y() - dragStartPos.y;
@@ -471,19 +490,38 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       const deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
                       const deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
 
-                      // Si arrastramos un grupo de imágenes seleccionadas
-                      if (selection.type === 'image' && selection.ids.includes(idx)) {
-                        const updatesList = selection.ids.map((selectedIdx) => {
-                          const imgObj = images[selectedIdx as number];
-                          return {
-                            index: selectedIdx as number,
-                            updates: {
-                              x: getDValue(imgObj.x) + deltaX,
-                              y: getDValue(imgObj.y) + deltaY
-                            }
-                          };
-                        });
-                        updateImage(updatesList);
+                      const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                      if (isImgSelected && selection.items.length > 1) {
+                        // Actualizar imágenes seleccionadas
+                        const imageUpdates = selection.items
+                          .filter(item => item.type === 'image')
+                          .map(item => {
+                            const imgObj = images[item.id as number];
+                            return {
+                              index: item.id as number,
+                              updates: {
+                                x: getDValue(imgObj.x) + deltaX,
+                                y: getDValue(imgObj.y) + deltaY
+                              }
+                            };
+                          });
+                        
+                        // Actualizar quests seleccionadas
+                        const questUpdates = selection.items
+                          .filter(item => item.type === 'quest')
+                          .map(item => {
+                            const qObj = quests.find(q => q.id === item.id);
+                            return {
+                              id: item.id as string,
+                              updates: {
+                                x: getDValue(qObj.x) + deltaX,
+                                y: getDValue(qObj.y) + deltaY
+                              }
+                            };
+                          });
+
+                        if (imageUpdates.length > 0) updateImage(imageUpdates);
+                        if (questUpdates.length > 0) updateQuest(questUpdates);
                       } else {
                         // Arrastre individual fuera de selección
                         const newX = e.target.x() / SCALE_FACTOR;
@@ -532,10 +570,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               const y = getDValue(q.y) * SCALE_FACTOR;
               const sizeVal = getDValue(q.size) || 1.0;
               const nodeSize = 40 * sizeVal; // 40px es el tamaño base para size: 1.0d
-              const isSelected = selection.type === 'quest' && selection.ids.includes(q.id);
+              const isSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
               
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
-              const isOffsetApplied = isSelected && draggingId !== null && draggingId !== q.id && draggingType === 'quest';
+              const isOffsetApplied = isSelected && draggingId !== null && draggingId !== q.id;
               const currentX = x + (isOffsetApplied ? dragOffset.x : 0);
               const currentY = y + (isOffsetApplied ? dragOffset.y : 0);
               
@@ -550,30 +588,33 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   onClick={(e) => {
                     e.cancelBubble = true;
                     if (e.evt.shiftKey) {
-                      if (selection.type === 'quest') {
-                        const newIds = selection.ids.includes(q.id)
-                          ? selection.ids.filter(id => id !== q.id)
-                          : [...selection.ids, q.id];
-                        setSelection({ type: 'quest', ids: newIds });
+                      const isAlreadySelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+                      let newItems = [];
+                      if (isAlreadySelected) {
+                        newItems = selection.items.filter(item => !(item.type === 'quest' && item.id === q.id));
                       } else {
-                        setSelection({ type: 'quest', ids: [q.id] });
+                        newItems = [...selection.items, { type: 'quest' as const, id: q.id }];
                       }
+                      
+                      const hasQuests = newItems.some(i => i.type === 'quest');
+                      const hasImages = newItems.some(i => i.type === 'image');
+                      const type = (hasQuests && hasImages) ? 'mixed' : (hasQuests ? 'quest' : (hasImages ? 'image' : null));
+                      setSelection({ type, ids: newItems.map(i => i.id), items: newItems });
                     } else {
-                      if (!selection.ids.includes(q.id)) {
-                        setSelection({ type: 'quest', ids: [q.id] });
-                      }
+                      setSelection({ type: 'quest', ids: [q.id], items: [{ type: 'quest', id: q.id }] });
                     }
                   }}
                   onDragStart={(e) => {
-                    if (!selection.ids.includes(q.id) || selection.type !== 'quest') {
-                      setSelection({ type: 'quest', ids: [q.id] });
+                    const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+                    if (!isQSelected) {
+                      setSelection({ type: 'quest', ids: [q.id], items: [{ type: 'quest', id: q.id }] });
                     }
                     setDraggingId(q.id);
                     setDraggingType('quest');
                     setDragStartPos({ x: e.target.x(), y: e.target.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
-                  onDragMove={(e) => {
+                  onMouseMove={(e) => {
                     if (dragStartPos) {
                       const deltaX = e.target.x() - dragStartPos.x;
                       const deltaY = e.target.y() - dragStartPos.y;
@@ -585,18 +626,38 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                       const deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
                       const deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
 
-                      if (selection.type === 'quest' && selection.ids.includes(q.id)) {
-                        const updatesList = selection.ids.map((selectedId) => {
-                          const qObj = quests.find(qi => qi.id === selectedId);
-                          return {
-                            id: selectedId as string,
-                            updates: {
-                              x: getDValue(qObj.x) + deltaX,
-                              y: getDValue(qObj.y) + deltaY
-                            }
-                          };
-                        });
-                        updateQuest(updatesList);
+                      const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+                      if (isQSelected && selection.items.length > 1) {
+                        // Actualizar misiones seleccionadas
+                        const questUpdates = selection.items
+                          .filter(item => item.type === 'quest')
+                          .map(item => {
+                            const qObj = quests.find(qi => qi.id === item.id);
+                            return {
+                              id: item.id as string,
+                              updates: {
+                                x: getDValue(qObj.x) + deltaX,
+                                y: getDValue(qObj.y) + deltaY
+                              }
+                            };
+                          });
+                        
+                        // Actualizar imágenes seleccionadas
+                        const imageUpdates = selection.items
+                          .filter(item => item.type === 'image')
+                          .map(item => {
+                            const imgObj = images[item.id as number];
+                            return {
+                              index: item.id as number,
+                              updates: {
+                                x: getDValue(imgObj.x) + deltaX,
+                                y: getDValue(imgObj.y) + deltaY
+                              }
+                            };
+                          });
+
+                        if (questUpdates.length > 0) updateQuest(questUpdates);
+                        if (imageUpdates.length > 0) updateImage(imageUpdates);
                       } else {
                         const newX = e.target.x() / SCALE_FACTOR;
                         const newY = e.target.y() / SCALE_FACTOR;

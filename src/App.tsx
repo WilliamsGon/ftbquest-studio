@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Download, Layers, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2 } from 'lucide-react';
+import { Upload, Download, Layers, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
@@ -26,7 +26,11 @@ function App() {
   const [images, setImages] = useState<any[]>([]);
   
   const [layers, setLayers] = useState({ quests: true, images: true });
-  const [rawSelection, setRawSelection] = useState<{ type: 'quest' | 'image' | null, ids: (string | number)[] }>({ type: null, ids: [] });
+  const [rawSelection, setRawSelection] = useState<{
+    type: 'quest' | 'image' | 'mixed' | null;
+    ids: (string | number)[];
+    items: { type: 'quest' | 'image'; id: string | number }[];
+  }>({ type: null, ids: [], items: [] });
   
   // Historial de cambios
   const [history, setHistory] = useState<{ quests: any[]; images: any[] }[]>([]);
@@ -39,16 +43,40 @@ function App() {
     historyIndexRef.current = historyIndex;
   }, [history, historyIndex]);
 
+  // Portapapeles para copiar/pegar
+  const [clipboard, setClipboard] = useState<{ type: 'quest' | 'image'; data: any }[]>([]);
+  const clipboardRef = useRef(clipboard);
+
+  useEffect(() => {
+    clipboardRef.current = clipboard;
+  }, [clipboard]);
+
   const selection = {
     type: rawSelection.type,
     ids: rawSelection.ids,
+    items: rawSelection.items,
     id: rawSelection.ids[0] ?? null
   };
 
-  const setSelection = (newSel: { type: 'quest' | 'image' | null, id?: string | number | null, ids?: (string | number)[] }) => {
+  const setSelection = (newSel: { 
+    type: 'quest' | 'image' | 'mixed' | null; 
+    id?: string | number | null; 
+    ids?: (string | number)[];
+    items?: { type: 'quest' | 'image'; id: string | number }[];
+  }) => {
+    let finalItems = newSel.items || [];
+    if (!newSel.items && newSel.ids && newSel.type) {
+      if (newSel.type !== 'mixed' && newSel.type !== null) {
+        finalItems = newSel.ids.map(id => ({ type: newSel.type as 'quest' | 'image', id }));
+      }
+    } else if (!newSel.items && newSel.id !== undefined && newSel.id !== null && newSel.type && newSel.type !== 'mixed') {
+      finalItems = [{ type: newSel.type, id: newSel.id }];
+    }
+
     setRawSelection({
       type: newSel.type,
-      ids: newSel.ids ? newSel.ids : (newSel.id !== undefined && newSel.id !== null ? [newSel.id] : [])
+      ids: newSel.ids ? newSel.ids : (newSel.id !== undefined && newSel.id !== null ? [newSel.id] : []),
+      items: finalItems
     });
   };
 
@@ -101,7 +129,92 @@ function App() {
     }
   };
 
-  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
+  const copyToClipboard = () => {
+    const items = selection.items;
+    if (items.length === 0) return;
+
+    const itemsToCopy = items.map(item => {
+      if (item.type === 'quest') {
+        const q = quests.find(qi => qi.id === item.id);
+        return { type: 'quest' as const, data: JSON.parse(JSON.stringify(q)) };
+      } else {
+        const img = images[item.id as number];
+        return { type: 'image' as const, data: JSON.parse(JSON.stringify(img)) };
+      }
+    }).filter(item => item.data !== null && item.data !== undefined);
+
+    if (itemsToCopy.length > 0) {
+      setClipboard(itemsToCopy);
+    }
+  };
+
+  const pasteFromClipboard = () => {
+    const clip = clipboardRef.current;
+    if (clip.length === 0) return;
+
+    let nextQuests = [...quests];
+    let nextImages = [...images];
+
+    const newlyPastedItems: { type: 'quest' | 'image'; id: string | number }[] = [];
+
+    clip.forEach(item => {
+      if (item.type === 'image') {
+        const img = item.data;
+        const currentX = img.x?.value ?? img.x ?? 0;
+        const currentY = img.y?.value ?? img.y ?? 0;
+        
+        const newImg = {
+          ...img,
+          x: { __type: 'number', value: currentX + 0.5, suffix: 'd' },
+          y: { __type: 'number', value: currentY + 0.5, suffix: 'd' }
+        };
+
+        const newIndex = nextImages.length;
+        nextImages.push(newImg);
+        newlyPastedItems.push({ type: 'image', id: newIndex });
+      } else if (item.type === 'quest') {
+        const q = item.data;
+        const currentX = q.x?.value ?? q.x ?? 0;
+        const currentY = q.y?.value ?? q.y ?? 0;
+
+        // Generar un ID hexadecimal único de 16 caracteres
+        let newId = generateHexId();
+        // Evitar colisión
+        while (nextQuests.some(qi => qi.id === newId)) {
+          newId = generateHexId();
+        }
+
+        const newQuest = {
+          ...q,
+          id: newId,
+          x: { __type: 'number', value: currentX + 0.5, suffix: 'd' },
+          y: { __type: 'number', value: currentY + 0.5, suffix: 'd' }
+        };
+
+        nextQuests.push(newQuest);
+        newlyPastedItems.push({ type: 'quest', id: newId });
+      }
+    });
+
+    updateState(nextQuests, nextImages);
+
+    // Seleccionar automáticamente los nuevos elementos pegados
+    if (newlyPastedItems.length > 0) {
+      const hasQuests = newlyPastedItems.some(i => i.type === 'quest');
+      const hasImages = newlyPastedItems.some(i => i.type === 'image');
+      let type: 'quest' | 'image' | 'mixed' = 'mixed';
+      if (hasQuests && !hasImages) type = 'quest';
+      if (!hasQuests && hasImages) type = 'image';
+
+      setSelection({
+        type,
+        ids: newlyPastedItems.map(i => i.id),
+        items: newlyPastedItems
+      });
+    }
+  };
+
+  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C, Ctrl+V)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -120,6 +233,12 @@ function App() {
         } else if (e.key === 'y' || e.key === 'Y') {
           e.preventDefault();
           redo();
+        } else if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault();
+          copyToClipboard();
+        } else if (e.key === 'v' || e.key === 'V') {
+          e.preventDefault();
+          pasteFromClipboard();
         }
       }
     };
@@ -241,7 +360,31 @@ function App() {
   const deleteQuest = (id: string) => {
     const nextQuests = quests.filter(q => q.id !== id);
     updateState(nextQuests, images);
-    setSelection({ type: null, id: null });
+    setSelection({ type: null, ids: [], items: [] });
+  };
+
+  const deleteSelectedQuests = () => {
+    const selectedIds = selection.items
+      .filter(item => item.type === 'quest')
+      .map(item => item.id as string);
+      
+    if (selectedIds.length === 0) return;
+
+    const nextQuests = quests.filter(q => !selectedIds.includes(q.id));
+    updateState(nextQuests, images);
+    setSelection({ type: null, ids: [], items: [] });
+  };
+
+  const deleteSelectedImages = () => {
+    const selectedIndices = selection.items
+      .filter(item => item.type === 'image')
+      .map(item => item.id as number);
+    
+    if (selectedIndices.length === 0) return;
+
+    const nextImages = images.filter((_, idx) => !selectedIndices.includes(idx));
+    updateState(quests, nextImages);
+    setSelection({ type: null, ids: [], items: [] });
   };
 
   const updateImage = (indexOrUpdatesList: number | { index: number, updates: any }[], updates?: any) => {
@@ -275,6 +418,119 @@ function App() {
       }
     }
     updateState(quests, newImages);
+  };
+
+  const alignSelectedItems = (alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    if (selection.items.length <= 1) return;
+
+    // 1. Calcular cajas delimitadoras de cada elemento
+    const boundsList = selection.items.map(item => {
+      let x = 0;
+      let y = 0;
+      let w = 0;
+      let h = 0;
+
+      if (item.type === 'quest') {
+        const q = quests.find(qi => qi.id === item.id);
+        if (q) {
+          x = q.x?.value ?? q.x ?? 0;
+          y = q.y?.value ?? q.y ?? 0;
+          const sizeVal = q.size?.value ?? q.size ?? 1.0;
+          w = sizeVal;
+          h = sizeVal;
+        }
+      } else {
+        const img = images[item.id as number];
+        if (img) {
+          x = img.x?.value ?? img.x ?? 0;
+          y = img.y?.value ?? img.y ?? 0;
+          w = img.width?.value ?? img.width ?? 2.0;
+          h = img.height?.value ?? img.height ?? 2.0;
+        }
+      }
+
+      return {
+        type: item.type,
+        id: item.id,
+        w,
+        h,
+        left: x - w / 2,
+        right: x + w / 2,
+        top: y - h / 2,
+        bottom: y + h / 2,
+        x,
+        y
+      };
+    });
+
+    // 2. Bounding box común de toda la selección
+    const minLeft = Math.min(...boundsList.map(b => b.left));
+    const maxRight = Math.max(...boundsList.map(b => b.right));
+    const minTop = Math.min(...boundsList.map(b => b.top));
+    const maxBottom = Math.max(...boundsList.map(b => b.bottom));
+
+    const centerX = (minLeft + maxRight) / 2;
+    const centerY = (minTop + maxBottom) / 2;
+
+    // 3. Generar actualizaciones
+    const questUpdates: { id: string; updates: any }[] = [];
+    const imageUpdates: { index: number; updates: any }[] = [];
+
+    boundsList.forEach(b => {
+      let newX = b.x;
+      let newY = b.y;
+
+      switch (alignType) {
+        case 'left':
+          newX = minLeft + b.w / 2;
+          break;
+        case 'center':
+          newX = centerX;
+          break;
+        case 'right':
+          newX = maxRight - b.w / 2;
+          break;
+        case 'top':
+          newY = minTop + b.h / 2;
+          break;
+        case 'middle':
+          newY = centerY;
+          break;
+        case 'bottom':
+          newY = maxBottom - b.h / 2;
+          break;
+      }
+
+      const updates = { x: newX, y: newY };
+      if (b.type === 'quest') {
+        questUpdates.push({ id: b.id as string, updates });
+      } else {
+        imageUpdates.push({ index: b.id as number, updates });
+      }
+    });
+
+    // 4. Aplicar cambios a través de updateState de forma atómica para registrar una sola entrada en el historial
+    const newQuests = quests.map(q => {
+      const found = questUpdates.find(u => u.id === q.id);
+      if (found) {
+        return {
+          ...q,
+          x: { __type: 'number', value: found.updates.x, suffix: 'd' },
+          y: { __type: 'number', value: found.updates.y, suffix: 'd' }
+        };
+      }
+      return q;
+    });
+
+    const newImages = JSON.parse(JSON.stringify(images));
+    imageUpdates.forEach(u => {
+      if (newImages[u.index]) {
+        newImages[u.index].x = { __type: 'number', value: u.updates.x, suffix: 'd' };
+        newImages[u.index].y = { __type: 'number', value: u.updates.y, suffix: 'd' };
+      }
+    });
+
+    updateState(newQuests, newImages);
   };
 
   return (
@@ -385,7 +641,55 @@ function App() {
           <h1><Settings size={20} /> Propiedades</h1>
         </div>
         <div className="content-section">
-          {!selection.type && (
+          {selection.items.length > 1 && (
+            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <h2 className="section-title">Alinear Selección ({selection.items.length} elementos)</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('left')} title="Alinear bordes izquierdos (Izquierda)">
+                  <AlignStartVertical size={18} />
+                </button>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('center')} title="Alinear centros horizontales (Centro)">
+                  <AlignCenterVertical size={18} />
+                </button>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('right')} title="Alinear bordes derechos (Derecha)">
+                  <AlignEndVertical size={18} />
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('top')} title="Alinear bordes superiores (Arriba)">
+                  <AlignStartHorizontal size={18} />
+                </button>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('middle')} title="Alinear centros verticales (Al medio)">
+                  <AlignCenterHorizontal size={18} />
+                </button>
+                <button className="btn btn-secondary" style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => alignSelectedItems('bottom')} title="Alinear bordes inferiores (Abajo)">
+                  <AlignEndHorizontal size={18} />
+                </button>
+              </div>
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                {selection.items.some(item => item.type === 'image') && (
+                  <button 
+                    className="btn-icon" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                    onClick={deleteSelectedImages}
+                  >
+                    <Trash2 size={14} /> Eliminar Imágenes Seleccionadas
+                  </button>
+                )}
+                {selection.items.some(item => item.type === 'quest') && (
+                  <button 
+                    className="btn-icon" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                    onClick={deleteSelectedQuests}
+                  >
+                    <Trash2 size={14} /> Eliminar Misiones Seleccionadas
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {selection.items.length === 0 && (
             <div className="empty-state">
               <p>Selecciona una misión o imagen para ver sus propiedades.</p>
             </div>
@@ -487,6 +791,17 @@ function App() {
                     }}><Trash2 size={16} /></button>
                   )}
                 </div>
+              </div>
+              
+              {/* Delete Image Section */}
+              <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <button 
+                  className="btn-icon" 
+                  style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px' }} 
+                  onClick={deleteSelectedImages}
+                >
+                  <Trash2 size={16} /> Eliminar Imagen
+                </button>
               </div>
             </div>
           )}
