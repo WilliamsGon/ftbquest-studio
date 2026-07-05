@@ -615,15 +615,63 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                           if (imageUpdates.length > 0) updateImage(imageUpdates);
                           if (questUpdates.length > 0) updateQuest(questUpdates);
                         } else {
-                          // Comportamiento normal para imágenes múltiples sin misiones en la selección
-                          if (snapToGrid) {
-                            deltaX = Math.round(deltaX / 0.5) * 0.5;
-                            deltaY = Math.round(deltaY / 0.5) * 0.5;
-                          }
+                          // Comportamiento para imágenes múltiples sin misiones en la selección
+                          const selectedImages = selection.items.filter(item => item.type === 'image');
                           
-                          const imageUpdates = selection.items
-                            .filter(item => item.type === 'image')
-                            .map(item => {
+                          if (snapToGrid && selectedImages.length > 0) {
+                            // Buscar la imagen seleccionada con el mayor número de orden (order o z-index)
+                            let maxOrder = -Infinity;
+                            let maxOrderImgObj: any = null;
+
+                            selectedImages.forEach(item => {
+                              const imgObj = images[item.id as number];
+                              if (imgObj) {
+                                const orderVal = imgObj.order?.value ?? imgObj.order ?? 1;
+                                if (orderVal > maxOrder) {
+                                  maxOrder = orderVal;
+                                  maxOrderImgObj = imgObj;
+                                }
+                              }
+                            });
+
+                            // Si encontramos un líder de orden máximo
+                            if (maxOrderImgObj) {
+                              const leaderOrigX = getDValue(maxOrderImgObj.x);
+                              const leaderOrigY = getDValue(maxOrderImgObj.y);
+                              const leaderFinalX = Math.round((leaderOrigX + deltaX) / 0.5) * 0.5;
+                              const leaderFinalY = Math.round((leaderOrigY + deltaY) / 0.5) * 0.5;
+
+                              // Todas las imágenes toman exactamente la coordenada final de este líder
+                              const imageUpdates = selectedImages.map(item => {
+                                return {
+                                  index: item.id as number,
+                                  updates: {
+                                    x: leaderFinalX,
+                                    y: leaderFinalY
+                                  }
+                                };
+                              });
+
+                              if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            } else {
+                              // Fallback de seguridad si no hay orden
+                              const snappedDeltaX = Math.round(deltaX / 0.5) * 0.5;
+                              const snappedDeltaY = Math.round(deltaY / 0.5) * 0.5;
+                              const imageUpdates = selectedImages.map(item => {
+                                const imgObj = images[item.id as number];
+                                return {
+                                  index: item.id as number,
+                                  updates: {
+                                    x: getDValue(imgObj.x) + snappedDeltaX,
+                                    y: getDValue(imgObj.y) + snappedDeltaY
+                                  }
+                                };
+                              });
+                              if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            }
+                          } else {
+                            // Si snapToGrid está inactivo o no hay imágenes seleccionadas
+                            const imageUpdates = selectedImages.map(item => {
                               const imgObj = images[item.id as number];
                               return {
                                 index: item.id as number,
@@ -633,8 +681,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                                 }
                               };
                             });
-                          
-                          if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            if (imageUpdates.length > 0) updateImage(imageUpdates);
+                          }
                         }
                       } else {
                         // Arrastre individual de imagen
