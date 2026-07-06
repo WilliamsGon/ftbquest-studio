@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
+import { TableView } from './components/TableView';
 
 const generateHexId = () => uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
 
@@ -41,6 +42,7 @@ const getItemY = (item: { type: 'quest' | 'image'; id: string | number }, quests
 function App() {
   const [snbtData, setSnbtData] = useState<any>(null);
   const [filename, setFilename] = useState<string>('Sin cargar');
+  const [viewMode, setViewMode] = useState<'map' | 'table'>('map');
   
   const [quests, setQuests] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
@@ -661,6 +663,26 @@ function App() {
             </button>
           </div>
           {snbtData && (
+            <div className="layout-toggle-container" style={{ marginTop: '10px', marginBottom: '4px' }}>
+              <button 
+                className={`layout-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
+                onClick={() => setViewMode('map')}
+                title="Vista de Mapa (Canvas)"
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                <MapIcon size={14} /> Mapa
+              </button>
+              <button 
+                className={`layout-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+                title="Vista de Tabla"
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                <TableIcon size={14} /> Tabla
+              </button>
+            </div>
+          )}
+          {snbtData && (
             <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
               <button 
                 className="btn btn-secondary" 
@@ -724,15 +746,17 @@ function App() {
         </div>
       </div>
 
-      {/* Canvas Central */}
-      <div className="canvas-container">
-        {!snbtData ? (
+      {/* Canvas Central o Vista de Tabla */}
+      {!snbtData ? (
+        <div className="canvas-container">
           <div className="empty-state">
             <MapIcon size={48} opacity={0.5} />
             <h2>Carga un archivo .snbt para empezar</h2>
             <p>El canvas interactivo se mostrará aquí.</p>
           </div>
-        ) : (
+        </div>
+      ) : viewMode === 'map' ? (
+        <div className="canvas-container">
           <EditorCanvas 
             quests={quests}
             images={images}
@@ -743,11 +767,19 @@ function App() {
             updateImage={updateImage}
             onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        <TableView 
+          quests={quests}
+          images={images}
+          updateQuest={updateQuest}
+          updateImage={updateImage}
+        />
+      )}
 
       {/* Sidebar Derecha - Propiedades */}
-      <div className="sidebar-right glass-panel">
+      {viewMode === 'map' && (
+        <div className="sidebar-right glass-panel">
         <div className="header">
           <h1><Settings size={20} /> Propiedades</h1>
         </div>
@@ -1358,6 +1390,7 @@ function App() {
           })()}
         </div>
       </div>
+      )}
     </div>
     {nbtEditor && (
       <div className="modal-overlay" onClick={() => setNbtEditor(null)}>
