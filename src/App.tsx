@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
@@ -46,6 +46,36 @@ function App() {
   
   const [quests, setQuests] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
+
+  // Niveles Z (order) únicos presentes en las imágenes de fondo
+  const availableZLevels = useMemo(() => {
+    const levels = new Set<number>();
+    images.forEach(img => {
+      const orderVal = img.order?.value ?? img.order ?? 1;
+      levels.add(Number(orderVal));
+    });
+    return Array.from(levels).sort((a, b) => a - b);
+  }, [images]);
+
+  const [visibleZLevels, setVisibleZLevels] = useState<number[]>([]);
+
+  // Sincronizar niveles Z visibles cuando cambian los disponibles
+  useEffect(() => {
+    if (availableZLevels.length === 0) {
+      setVisibleZLevels([]);
+      return;
+    }
+    setVisibleZLevels(prev => {
+      // Si estaba vacío, activamos todos por defecto
+      if (prev.length === 0) {
+        return [...availableZLevels];
+      }
+      // Mantener los visibles que sigan estando y añadir los nuevos niveles detectados
+      const currentVisible = prev.filter(l => availableZLevels.includes(l));
+      const newLevels = availableZLevels.filter(l => !prev.includes(l));
+      return [...currentVisible, ...newLevels].sort((a, b) => a - b);
+    });
+  }, [availableZLevels]);
   
   const [layers, setLayers] = useState({ quests: true, images: true });
   const [rawSelection, setRawSelection] = useState<{
@@ -732,6 +762,50 @@ function App() {
                 {images.length}
               </span>
             </div>
+
+            {layers.images && availableZLevels.length > 0 && (
+              <div className="z-filter-container">
+                <div className="z-filter-title">
+                  <span>Filtrar por Capa Z</span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      className="z-link-btn"
+                      onClick={() => setVisibleZLevels([...availableZLevels])}
+                    >
+                      Todos
+                    </button>
+                    <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
+                    <button 
+                      className="z-link-btn"
+                      onClick={() => setVisibleZLevels([])}
+                    >
+                      Ninguno
+                    </button>
+                  </div>
+                </div>
+                <div className="z-chips-grid">
+                  {availableZLevels.map(lvl => {
+                    const isActive = visibleZLevels.includes(lvl);
+                    return (
+                      <button 
+                        key={`z-chip-${lvl}`}
+                        className={`z-chip-btn ${isActive ? 'active' : ''}`}
+                        onClick={() => {
+                          setVisibleZLevels(prev => 
+                            prev.includes(lvl) 
+                              ? prev.filter(l => l !== lvl)
+                              : [...prev, lvl].sort((a, b) => a - b)
+                          );
+                        }}
+                        title={`Alternar visualización de capa Z: ${lvl}`}
+                      >
+                        Z: {lvl}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -766,6 +840,7 @@ function App() {
             updateQuest={updateQuest}
             updateImage={updateImage}
             onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
+            visibleZLevels={visibleZLevels}
           />
         </div>
       ) : (

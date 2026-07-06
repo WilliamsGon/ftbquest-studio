@@ -22,6 +22,7 @@ interface CanvasProps {
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
   onPointerPosChange?: (pos: { x: number; y: number } | null) => void;
+  visibleZLevels: number[];
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -134,7 +135,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   );
 };
 
-export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange }) => {
+export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange, visibleZLevels }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -373,7 +374,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   const rectY1 = selectionRect.y;
                   const rectY2 = selectionRect.y + selectionRect.h;
 
-                  const intersects = imgX1 < rectX2 && imgX2 > rectX1 && imgY1 < rectY2 && imgY2 > rectY1;
+                  const isZVisible = visibleZLevels.includes(Number(img.order?.value ?? img.order ?? 1));
+                  const intersects = isZVisible && imgX1 < rectX2 && imgX2 > rectX1 && imgY1 < rectY2 && imgY2 > rectY1;
                   if (intersects) {
                     selectedImageIndices.push(idx);
                   }
@@ -449,6 +451,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               .sort((a, b) => getDValue(a.order) - getDValue(b.order))
               .map((img) => {
               const idx = img.originalIndex;
+              const isZVisible = visibleZLevels.includes(Number(img.order?.value ?? img.order ?? 1));
+              if (!isZVisible) return null;
+
               const x = getDValue(img.x) * SCALE_FACTOR;
               const y = getDValue(img.y) * SCALE_FACTOR;
               const w = getDValue(img.width) * SCALE_FACTOR;

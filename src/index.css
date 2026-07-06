@@ -615,3 +615,71 @@ h1, h2, h3 {
   font-weight: 500;
   font-size: 0.75rem;
 }
+
+/* Z-Filter Chips Styles */
+.z-filter-container {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.z-filter-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.z-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.z-chip-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.z-chip-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.z-chip-btn.active {
+  background: rgba(123, 97, 255, 0.2);
+  border-color: var(--accent-color);
+  color: #c9cbff;
+  box-shadow: 0 2px 8px rgba(123, 97, 255, 0.15);
+}
+
+.z-link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-color);
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.z-link-btn:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
