@@ -6,9 +6,10 @@ interface TableViewProps {
   images: any[];
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
+  onOpenNbtEditor?: (title: string, value: any, onSave: (val: any) => void) => void;
 }
 
-export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQuest, updateImage }) => {
+export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQuest, updateImage, onOpenNbtEditor }) => {
   const [subTab, setSubTab] = useState<'quests' | 'tasks' | 'rewards'>('quests');
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -82,7 +83,10 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
       t.questTitle.toLowerCase().includes(query) ||
       (t.taskObj.id || '').toLowerCase().includes(query) ||
       (t.taskObj.type || '').toLowerCase().includes(query) ||
-      (typeof t.taskObj.item === 'string' ? t.taskObj.item : t.taskObj.item?.id || '').toLowerCase().includes(query)
+      (t.taskObj.type === 'kill'
+        ? (getDValue(t.taskObj.entity) || getDValue(t.taskObj.monster) || '')
+        : (typeof t.taskObj.item === 'string' ? t.taskObj.item : t.taskObj.item?.id || '')
+      ).toLowerCase().includes(query)
     );
   }, [tasksList, subTab, filterQuery]);
 
@@ -385,7 +389,21 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
             </thead>
             <tbody>
               {filteredTasks.map((t, idx) => {
-                const itemVal = typeof t.taskObj.item === 'string' ? t.taskObj.item : (t.taskObj.item?.id || '');
+                const isKillType = t.taskObj.type === 'kill';
+                const itemVal = isKillType 
+                  ? (getDValue(t.taskObj.entity) || getDValue(t.taskObj.monster) || '')
+                  : (typeof t.taskObj.item === 'string' ? t.taskObj.item : (t.taskObj.item?.id || ''));
+
+                const quantityVal = isKillType 
+                  ? (getDValue(t.taskObj.value) ?? 1)
+                  : (
+                      t.taskObj.count !== undefined 
+                        ? getDValue(t.taskObj.count) 
+                        : (typeof t.taskObj.item === 'object' && t.taskObj.item !== null
+                            ? (getDValue(t.taskObj.item.Count) ?? getDValue(t.taskObj.item.count) ?? 1)
+                            : 1)
+                    );
+
                 return (
                   <tr key={`${t.questId}-task-${idx}`}>
                     <td>
@@ -415,9 +433,21 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
                       <select 
                         className="table-select"
                         value={t.taskObj.type || 'item'}
-                        onChange={(e) => handleUpdateTask(t.questId, t.taskIndex, { type: e.target.value })}
+                        onChange={(e) => {
+                          const newType = e.target.value;
+                          const baseUpdates: any = { type: newType };
+                          if (newType === 'kill') {
+                            baseUpdates.entity = 'minecraft:zombie';
+                            baseUpdates.value = 100;
+                          } else if (newType === 'item') {
+                            baseUpdates.item = 'minecraft:stone';
+                            baseUpdates.count = 1;
+                          }
+                          handleUpdateTask(t.questId, t.taskIndex, baseUpdates);
+                        }}
                       >
                         <option value="item">Item</option>
+                        <option value="kill">Kill</option>
                         <option value="xp">XP</option>
                         <option value="checkmark">Checkmark</option>
                         <option value="fluid">Fluid</option>
@@ -425,29 +455,103 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
                       </select>
                     </td>
                     <td>
-                      <input 
-                        type="text" 
-                        className="table-input"
-                        value={itemVal}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (typeof t.taskObj.item === 'object' && t.taskObj.item !== null) {
-                            handleUpdateTask(t.questId, t.taskIndex, { item: { ...t.taskObj.item, id: val } });
-                          } else {
-                            handleUpdateTask(t.questId, t.taskIndex, { item: val });
-                          }
-                        }}
-                        disabled={t.taskObj.type !== 'item'}
-                        placeholder="ej. minecraft:dirt"
-                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="table-input"
+                          value={itemVal}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (isKillType) {
+                              if (t.taskObj.entity !== undefined) {
+                                if (typeof t.taskObj.entity === 'object' && t.taskObj.entity !== null) {
+                                  handleUpdateTask(t.questId, t.taskIndex, { entity: { ...t.taskObj.entity, value: val } });
+                                } else {
+                                  handleUpdateTask(t.questId, t.taskIndex, { entity: val });
+                                }
+                              } else if (t.taskObj.monster !== undefined) {
+                                if (typeof t.taskObj.monster === 'object' && t.taskObj.monster !== null) {
+                                  handleUpdateTask(t.questId, t.taskIndex, { monster: { ...t.taskObj.monster, value: val } });
+                                } else {
+                                  handleUpdateTask(t.questId, t.taskIndex, { monster: val });
+                                }
+                              } else {
+                                handleUpdateTask(t.questId, t.taskIndex, { entity: val });
+                              }
+                            } else if (typeof t.taskObj.item === 'object' && t.taskObj.item !== null) {
+                              handleUpdateTask(t.questId, t.taskIndex, { item: { ...t.taskObj.item, id: val } });
+                            } else {
+                              handleUpdateTask(t.questId, t.taskIndex, { item: val });
+                            }
+                          }}
+                          disabled={t.taskObj.type !== 'item' && !isKillType}
+                          placeholder={isKillType ? 'ej. minecraft:chicken' : 'ej. minecraft:dirt'}
+                          style={{ flexGrow: 1 }}
+                        />
+                        {t.taskObj.type === 'item' && onOpenNbtEditor && (
+                          <button
+                            className="btn btn-secondary"
+                            style={{ padding: '4px 8px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={() => {
+                              const currentItem = t.taskObj.item;
+                              const itemToEdit = typeof currentItem === 'object' && currentItem !== null 
+                                ? currentItem 
+                                : { id: currentItem || 'minecraft:air', Count: 1 };
+                              
+                              onOpenNbtEditor(
+                                `Editar NBT de Tarea (${t.taskObj.id || 'Sin ID'})`,
+                                itemToEdit,
+                                (updatedNbt) => {
+                                  handleUpdateTask(t.questId, t.taskIndex, { item: updatedNbt });
+                                }
+                              );
+                            }}
+                            title="Editar NBT completo del ítem (JSON)"
+                          >
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--accent-color)' }}>NBT</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <input 
                         type="number" 
                         className="table-input"
-                        value={t.taskObj.count || 1}
-                        onChange={(e) => handleUpdateTask(t.questId, t.taskIndex, { count: parseInt(e.target.value) || 1 })}
-                        disabled={t.taskObj.type !== 'item'}
+                        value={quantityVal}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 1;
+                          if (isKillType) {
+                            if (typeof t.taskObj.value === 'object' && t.taskObj.value !== null) {
+                              handleUpdateTask(t.questId, t.taskIndex, { value: { ...t.taskObj.value, value: val } });
+                            } else {
+                              handleUpdateTask(t.questId, t.taskIndex, { value: val });
+                            }
+                          } else {
+                            // Si es tipo item:
+                            // Si la cantidad ya estaba en t.taskObj.item.Count (u objeto), la editamos allí
+                            if (typeof t.taskObj.item === 'object' && t.taskObj.item !== null && (t.taskObj.item.Count !== undefined || t.taskObj.item.count !== undefined)) {
+                              const isCapitalCount = t.taskObj.item.Count !== undefined;
+                              const countKey = isCapitalCount ? 'Count' : 'count';
+                              const currentCountObj = t.taskObj.item[countKey];
+                              
+                              const updatedItem = {
+                                ...t.taskObj.item,
+                                [countKey]: typeof currentCountObj === 'object' && currentCountObj !== null
+                                  ? { ...currentCountObj, value: val }
+                                  : val
+                              };
+                              handleUpdateTask(t.questId, t.taskIndex, { item: updatedItem });
+                            } else {
+                              // De lo contrario, lo editamos en count a nivel de raíz
+                              if (typeof t.taskObj.count === 'object' && t.taskObj.count !== null) {
+                                handleUpdateTask(t.questId, t.taskIndex, { count: { ...t.taskObj.count, value: val } });
+                              } else {
+                                handleUpdateTask(t.questId, t.taskIndex, { count: val });
+                              }
+                            }
+                          }
+                        }}
+                        disabled={t.taskObj.type !== 'item' && !isKillType}
                       />
                     </td>
                     <td style={{ textAlign: 'center' }}>
@@ -496,9 +600,17 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
             </thead>
             <tbody>
               {filteredRewards.map((r, idx) => {
-                const itemVal = typeof r.rewardObj.item === 'string' 
-                  ? r.rewardObj.item 
-                  : (r.rewardObj.item?.id || r.rewardObj.command || '');
+                const itemVal = r.rewardObj.type === 'command'
+                  ? (getDValue(r.rewardObj.command) || '')
+                  : (typeof r.rewardObj.item === 'string'
+                      ? r.rewardObj.item
+                      : (getDValue(r.rewardObj.item?.id) || ''));
+
+                const rewardCountVal = r.rewardObj.count !== undefined 
+                  ? getDValue(r.rewardObj.count) 
+                  : (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null
+                      ? (getDValue(r.rewardObj.item.Count) ?? getDValue(r.rewardObj.item.count) ?? 1)
+                      : 1);
                 return (
                   <tr key={`${r.questId}-reward-${idx}`}>
                     <td>
@@ -548,26 +660,59 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
                         <input 
                           type="text" 
                           className="table-input"
-                          value={r.rewardObj.command || ''}
-                          onChange={(e) => handleUpdateReward(r.questId, r.rewardIndex, { command: e.target.value })}
-                          placeholder="/give @p ..."
-                        />
-                      ) : (
-                        <input 
-                          type="text" 
-                          className="table-input"
                           value={itemVal}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null) {
-                              handleUpdateReward(r.questId, r.rewardIndex, { item: { ...r.rewardObj.item, id: val } });
+                            if (typeof r.rewardObj.command === 'object' && r.rewardObj.command !== null) {
+                              handleUpdateReward(r.questId, r.rewardIndex, { command: { ...r.rewardObj.command, value: val } });
                             } else {
-                              handleUpdateReward(r.questId, r.rewardIndex, { item: val });
+                              handleUpdateReward(r.questId, r.rewardIndex, { command: val });
                             }
                           }}
-                          disabled={r.rewardObj.type !== 'item'}
-                          placeholder="ej. minecraft:diamond"
+                          placeholder="/give @p ..."
                         />
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input 
+                            type="text" 
+                            className="table-input"
+                            value={itemVal}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null) {
+                                handleUpdateReward(r.questId, r.rewardIndex, { item: { ...r.rewardObj.item, id: val } });
+                              } else {
+                                handleUpdateReward(r.questId, r.rewardIndex, { item: val });
+                              }
+                            }}
+                            disabled={r.rewardObj.type !== 'item'}
+                            placeholder="ej. minecraft:diamond"
+                            style={{ flexGrow: 1 }}
+                          />
+                          {r.rewardObj.type === 'item' && onOpenNbtEditor && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 8px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              onClick={() => {
+                                const currentItem = r.rewardObj.item;
+                                const itemToEdit = typeof currentItem === 'object' && currentItem !== null 
+                                  ? currentItem 
+                                  : { id: currentItem || 'minecraft:air', Count: 1 };
+                                
+                                onOpenNbtEditor(
+                                  `Editar NBT de Recompensa (${r.rewardObj.id || 'Sin ID'})`,
+                                  itemToEdit,
+                                  (updatedNbt) => {
+                                    handleUpdateReward(r.questId, r.rewardIndex, { item: updatedNbt });
+                                  }
+                                );
+                              }}
+                              title="Editar NBT completo del ítem (JSON)"
+                            >
+                              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--accent-color)' }}>NBT</span>
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td>
@@ -575,22 +720,57 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
                         <input 
                           type="number" 
                           className="table-input"
-                          value={r.rewardObj.xp || 0}
-                          onChange={(e) => handleUpdateReward(r.questId, r.rewardIndex, { xp: parseInt(e.target.value) || 0 })}
+                          value={getDValue(r.rewardObj.xp) ?? 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            if (typeof r.rewardObj.xp === 'object' && r.rewardObj.xp !== null) {
+                              handleUpdateReward(r.questId, r.rewardIndex, { xp: { ...r.rewardObj.xp, value: val } });
+                            } else {
+                              handleUpdateReward(r.questId, r.rewardIndex, { xp: val });
+                            }
+                          }}
                         />
                       ) : r.rewardObj.type === 'xp_levels' ? (
                         <input 
                           type="number" 
                           className="table-input"
-                          value={r.rewardObj.xp_levels || 0}
-                          onChange={(e) => handleUpdateReward(r.questId, r.rewardIndex, { xp_levels: parseInt(e.target.value) || 0 })}
+                          value={getDValue(r.rewardObj.xp_levels) ?? 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            if (typeof r.rewardObj.xp_levels === 'object' && r.rewardObj.xp_levels !== null) {
+                              handleUpdateReward(r.questId, r.rewardIndex, { xp_levels: { ...r.rewardObj.xp_levels, value: val } });
+                            } else {
+                              handleUpdateReward(r.questId, r.rewardIndex, { xp_levels: val });
+                            }
+                          }}
                         />
                       ) : (
                         <input 
                           type="number" 
                           className="table-input"
-                          value={r.rewardObj.count || 1}
-                          onChange={(e) => handleUpdateReward(r.questId, r.rewardIndex, { count: parseInt(e.target.value) || 1 })}
+                          value={rewardCountVal}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1;
+                            if (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null && (r.rewardObj.item.Count !== undefined || r.rewardObj.item.count !== undefined)) {
+                              const isCapitalCount = r.rewardObj.item.Count !== undefined;
+                              const countKey = isCapitalCount ? 'Count' : 'count';
+                              const currentCountObj = r.rewardObj.item[countKey];
+                              
+                              const updatedItem = {
+                                ...r.rewardObj.item,
+                                [countKey]: typeof currentCountObj === 'object' && currentCountObj !== null
+                                  ? { ...currentCountObj, value: val }
+                                  : val
+                              };
+                              handleUpdateReward(r.questId, r.rewardIndex, { item: updatedItem });
+                            } else {
+                              if (typeof r.rewardObj.count === 'object' && r.rewardObj.count !== null) {
+                                handleUpdateReward(r.questId, r.rewardIndex, { count: { ...r.rewardObj.count, value: val } });
+                              } else {
+                                handleUpdateReward(r.questId, r.rewardIndex, { count: val });
+                              }
+                            }
+                          }}
                           disabled={r.rewardObj.type !== 'item'}
                         />
                       )}

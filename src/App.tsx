@@ -849,6 +849,7 @@ function App() {
           images={images}
           updateQuest={updateQuest}
           updateImage={updateImage}
+          onOpenNbtEditor={(title, value, onSave) => setNbtEditor({ title, value: JSON.stringify(value, null, 2), onSave })}
         />
       )}
 
