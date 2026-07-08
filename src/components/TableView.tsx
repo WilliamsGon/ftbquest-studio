@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Trash2, Tag, Gift, Award, Clipboard } from 'lucide-react';
+import { Search, Trash2, Tag, Gift, Clipboard } from 'lucide-react';
 
 interface TableViewProps {
   quests: any[];
@@ -9,7 +9,7 @@ interface TableViewProps {
   onOpenNbtEditor?: (title: string, value: any, onSave: (val: any) => void) => void;
 }
 
-export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQuest, updateImage, onOpenNbtEditor }) => {
+export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpenNbtEditor }) => {
   const [subTab, setSubTab] = useState<'quests' | 'tasks' | 'rewards'>('quests');
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
       const tasksArray = Array.isArray(q.tasks) 
         ? q.tasks 
         : (q.tasks ? [q.tasks] : []);
-      tasksArray.forEach((t, tIdx) => {
+      tasksArray.forEach((t: any, tIdx: number) => {
         list.push({
           questId: q.id,
           questTitle: q.title || q.id,
@@ -52,7 +52,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, images, updateQues
       const rewardsArray = Array.isArray(q.rewards) 
         ? q.rewards 
         : (q.rewards ? [q.rewards] : []);
-      rewardsArray.forEach((r, rIdx) => {
+      rewardsArray.forEach((r: any, rIdx: number) => {
         list.push({
           questId: q.id,
           questTitle: q.title || q.id,
