@@ -333,12 +333,19 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                     </select>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      className="table-checkbox"
-                      checked={q.hide_until_deps_complete || false}
-                      onChange={(e) => updateQuest(q.id, { hide_until_deps_complete: e.target.checked })}
-                    />
+                    <select 
+                      className="table-select"
+                      value={q.hide_until_deps_complete === undefined ? 'default' : (q.hide_until_deps_complete ? 'true' : 'false')}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const nextVal = val === 'default' ? undefined : (val === 'true');
+                        updateQuest(q.id, { hide_until_deps_complete: nextVal });
+                      }}
+                    >
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button 

@@ -434,12 +434,19 @@ function App() {
         const found = idOrUpdatesList.find(u => u.id === q.id);
         if (found) {
           const u = found.updates;
-          return {
+          const updatedObj: any = {
             ...q,
             ...u,
-            x: u.x !== undefined ? { __type: 'number', value: u.x, suffix: 'd' } : q.x,
-            y: u.y !== undefined ? { __type: 'number', value: u.y, suffix: 'd' } : q.y,
+            x: u.x !== undefined ? (typeof u.x === 'object' && u.x !== null ? u.x : { __type: 'number', value: u.x, suffix: 'd' }) : q.x,
+            y: u.y !== undefined ? (typeof u.y === 'object' && u.y !== null ? u.y : { __type: 'number', value: u.y, suffix: 'd' }) : q.y,
           };
+          // Limpiar propiedades con valor undefined para eliminarlas físicamente
+          Object.keys(updatedObj).forEach(key => {
+            if (updatedObj[key] === undefined) {
+              delete updatedObj[key];
+            }
+          });
+          return updatedObj;
         }
         return q;
       });
@@ -448,12 +455,19 @@ function App() {
       const id = idOrUpdatesList;
       const nextQuests = quests.map(q => {
         if (q.id === id) {
-          return {
+          const updatedObj: any = {
             ...q,
             ...updates,
-            x: updates.x !== undefined ? { __type: 'number', value: updates.x, suffix: 'd' } : q.x,
-            y: updates.y !== undefined ? { __type: 'number', value: updates.y, suffix: 'd' } : q.y,
+            x: updates.x !== undefined ? (typeof updates.x === 'object' && updates.x !== null ? updates.x : { __type: 'number', value: updates.x, suffix: 'd' }) : q.x,
+            y: updates.y !== undefined ? (typeof updates.y === 'object' && updates.y !== null ? updates.y : { __type: 'number', value: updates.y, suffix: 'd' }) : q.y,
           };
+          // Limpiar propiedades con valor undefined para eliminarlas físicamente
+          Object.keys(updatedObj).forEach(key => {
+            if (updatedObj[key] === undefined) {
+              delete updatedObj[key];
+            }
+          });
+          return updatedObj;
         }
         return q;
       });
@@ -1236,12 +1250,22 @@ function App() {
                     />
                   </div>
                 </div>
-                <div className="input-group" style={{ flexDirection: 'row', alignItems: 'center', marginTop: '10px' }}>
-                  <input type="checkbox" id="hide_deps"
-                    checked={selectedQuest.hide_until_deps_complete || false}
-                    onChange={(e) => updateQuest(selection.id as string, { hide_until_deps_complete: e.target.checked })}
-                  />
-                  <label htmlFor="hide_deps" style={{ marginLeft: '8px', marginBottom: 0, cursor: 'pointer' }}>Ocultar hasta completar dependencias</label>
+                <div className="input-group" style={{ marginTop: '10px' }}>
+                  <label htmlFor="hide_deps">Ocultar hasta completar dependencias</label>
+                  <select 
+                    id="hide_deps"
+                    className="input-field"
+                    value={selectedQuest.hide_until_deps_complete === undefined ? 'default' : (selectedQuest.hide_until_deps_complete ? 'true' : 'false')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const nextVal = val === 'default' ? undefined : (val === 'true');
+                      updateQuest(selection.id as string, { hide_until_deps_complete: nextVal });
+                    }}
+                  >
+                    <option value="default">Por Defecto (Heredar)</option>
+                    <option value="true">Sí (Ocultar)</option>
+                    <option value="false">No (Mostrar)</option>
+                  </select>
                 </div>
 
                 {/* Tasks Section */}
