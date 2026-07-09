@@ -155,14 +155,11 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
   };
 
   // --- 6. LÓGICA DE MARCAR TODOS (BULK CHECKBOX TOGGLE) ---
-  const isQuestsAllChecked = useMemo(() => {
-    return filteredQuests.length > 0 && filteredQuests.every(q => q.hide_until_deps_complete);
-  }, [filteredQuests]);
-
-  const handleQuestsBulkToggle = (checked: boolean) => {
+  const handleQuestsBulkToggle = (val: string) => {
+    const nextVal = val === 'default' ? undefined : (val === 'true');
     const updatesList = filteredQuests.map(q => ({
       id: q.id,
-      updates: { hide_until_deps_complete: checked }
+      updates: { hide_until_deps_complete: nextVal }
     }));
     if (updatesList.length > 0) {
       updateQuest(updatesList);
@@ -253,15 +250,24 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                 <th>Tamaño</th>
                 <th>Forma (Shape)</th>
                 <th style={{ textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <input 
-                      type="checkbox" 
-                      className="table-checkbox"
-                      checked={isQuestsAllChecked}
-                      onChange={(e) => handleQuestsBulkToggle(e.target.checked)}
-                      title="Marcar / Desmarcar todos los visibles"
-                    />
-                    <span>Ocultar Deps</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Ocultar Deps</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          handleQuestsBulkToggle(val);
+                        }
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
                   </div>
                 </th>
                 <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
