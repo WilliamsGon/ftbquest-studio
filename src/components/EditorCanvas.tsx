@@ -54,16 +54,20 @@ const getCandidateUrls = (icon: any): string[] => {
   const urls: string[] = [];
   const pathClean = path.endsWith('.png') ? path.slice(0, -4) : path;
 
+  // Resolver prefijo base de Vite de forma robusta
+  const baseUrl = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+  const cleanBase = baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`;
+
   if (path.includes('textures/')) {
-    urls.push(`/textures/${namespace}/${pathClean}.png`);
-    urls.push(`/textures/${namespace}/${path}`);
+    urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/${path}`);
   } else {
     // Intentar bajo textures/
-    urls.push(`/textures/${namespace}/textures/${pathClean}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/textures/${pathClean}.png`);
     // Fallbacks tradicionales
-    urls.push(`/textures/${namespace}/item/${pathClean}.png`);
-    urls.push(`/textures/${namespace}/block/${pathClean}.png`);
-    urls.push(`/textures/${namespace}/${pathClean}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/item/${pathClean}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/block/${pathClean}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
   }
 
   return Array.from(new Set(urls));
