@@ -83,6 +83,38 @@ function App() {
     ids: (string | number)[];
     items: { type: 'quest' | 'image'; id: string | number }[];
   }>({ type: null, ids: [], items: [] });
+
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    targetQuestId: string | null;
+  }>({ visible: false, x: 0, y: 0, targetQuestId: null });
+
+  useEffect(() => {
+    const handleGlobalPointerDown = (e: PointerEvent) => {
+      if (contextMenu.visible) {
+        const target = e.target as HTMLElement;
+        if (target.closest('.context-menu')) {
+          return; // Ignorar el cierre si el click es dentro del propio menú
+        }
+        setContextMenu(prev => ({ ...prev, visible: false }));
+      }
+    };
+    
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && contextMenu.visible) {
+        setContextMenu(prev => ({ ...prev, visible: false }));
+      }
+    };
+
+    window.addEventListener('pointerdown', handleGlobalPointerDown);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handleGlobalPointerDown);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [contextMenu.visible]);
   
   // Historial de cambios
   const [history, setHistory] = useState<{ quests: any[]; images: any[] }[]>([]);
@@ -475,6 +507,136 @@ function App() {
     }
   };
 
+  const handleQuestContextMenu = (questId: string, clientX: number, clientY: number) => {
+    setContextMenu({
+      visible: true,
+      x: clientX,
+      y: clientY,
+      targetQuestId: questId
+    });
+  };
+
+  const makeSelectedDependOnTarget = () => {
+    if (!contextMenu.targetQuestId) return;
+    const targetId = contextMenu.targetQuestId;
+    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
+    if (selectedIds.length === 0) return;
+
+    const nextQuests = quests.map(q => {
+      if (selectedIds.includes(q.id) && q.id !== targetId) {
+        const currentDeps = Array.isArray(q.dependencies) 
+          ? [...q.dependencies] 
+          : (q.dependencies ? [q.dependencies] : []);
+        
+        const stringDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+        if (!stringDeps.includes(targetId)) {
+          return {
+            ...q,
+            dependencies: [...currentDeps, targetId]
+          };
+        }
+      }
+      return q;
+    });
+    updateState(nextQuests, images);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const removeSelectedDependencyOnTarget = () => {
+    if (!contextMenu.targetQuestId) return;
+    const targetId = contextMenu.targetQuestId;
+    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
+    if (selectedIds.length === 0) return;
+
+    const nextQuests = quests.map(q => {
+      if (selectedIds.includes(q.id)) {
+        const currentDeps = Array.isArray(q.dependencies) 
+          ? [...q.dependencies] 
+          : (q.dependencies ? [q.dependencies] : []);
+        
+        const filteredDeps = currentDeps.filter(d => {
+          const dId = typeof d === 'object' && d !== null ? d.id : String(d);
+          return dId !== targetId;
+        });
+
+        const updatedQuest = {
+          ...q,
+          dependencies: filteredDeps.length > 0 ? filteredDeps : undefined
+        };
+        if (updatedQuest.dependencies === undefined) {
+          delete updatedQuest.dependencies;
+        }
+        return updatedQuest;
+      }
+      return q;
+    });
+    updateState(nextQuests, images);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const makeTargetDependOnSelected = () => {
+    if (!contextMenu.targetQuestId) return;
+    const targetId = contextMenu.targetQuestId;
+    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
+    if (selectedIds.length === 0) return;
+
+    const nextQuests = quests.map(q => {
+      if (q.id === targetId) {
+        const currentDeps = Array.isArray(q.dependencies) 
+          ? [...q.dependencies] 
+          : (q.dependencies ? [q.dependencies] : []);
+        
+        const stringDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+        const newDeps = [...currentDeps];
+        selectedIds.forEach(id => {
+          if (id !== targetId && !stringDeps.includes(id)) {
+            newDeps.push(id);
+          }
+        });
+
+        return {
+          ...q,
+          dependencies: newDeps
+        };
+      }
+      return q;
+    });
+    updateState(nextQuests, images);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const removeTargetDependencyOnSelected = () => {
+    if (!contextMenu.targetQuestId) return;
+    const targetId = contextMenu.targetQuestId;
+    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
+    if (selectedIds.length === 0) return;
+
+    const nextQuests = quests.map(q => {
+      if (q.id === targetId) {
+        const currentDeps = Array.isArray(q.dependencies) 
+          ? [...q.dependencies] 
+          : (q.dependencies ? [q.dependencies] : []);
+        
+        const filteredDeps = currentDeps.filter(d => {
+          const dId = typeof d === 'object' && d !== null ? d.id : String(d);
+          return !selectedIds.includes(dId);
+        });
+
+        const updatedQuest = {
+          ...q,
+          dependencies: filteredDeps.length > 0 ? filteredDeps : undefined
+        };
+        if (updatedQuest.dependencies === undefined) {
+          delete updatedQuest.dependencies;
+        }
+        return updatedQuest;
+      }
+      return q;
+    });
+    updateState(nextQuests, images);
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
   const deleteQuest = (id: string) => {
     const nextQuests = quests.filter(q => q.id !== id);
     updateState(nextQuests, images);
@@ -863,6 +1025,7 @@ function App() {
             updateQuest={updateQuest}
             updateImage={updateImage}
             onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
+            onQuestContextMenu={handleQuestContextMenu}
             visibleZLevels={visibleZLevels}
           />
         </div>
@@ -1176,6 +1339,14 @@ function App() {
             const tasksArray = Array.isArray(selectedQuest.tasks) ? selectedQuest.tasks : (selectedQuest.tasks ? [selectedQuest.tasks] : []);
             const rewardsArray = Array.isArray(selectedQuest.rewards) ? selectedQuest.rewards : (selectedQuest.rewards ? [selectedQuest.rewards] : []);
 
+            // Normalizar dependencias de la misión actual
+            const deps = Array.isArray(selectedQuest.dependencies) ? selectedQuest.dependencies : (selectedQuest.dependencies ? [selectedQuest.dependencies] : []);
+            const normalizedDeps = deps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+            const availableQuestsToAdd = quests.filter(q => 
+              q.id !== selectedQuest.id && 
+              !normalizedDeps.includes(q.id)
+            ).sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id));
+
             return (
               <div>
                 <h2 className="section-title">Misión Seleccionada</h2>
@@ -1275,6 +1446,96 @@ function App() {
                     <option value="true">Sí (Ocultar)</option>
                     <option value="false">No (Mostrar)</option>
                   </select>
+                </div>
+
+                {/* Dependencies Section */}
+                <div style={{ marginTop: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <h3 style={{ fontSize: '0.9rem', marginBottom: '10px' }}>Dependencias (Requisitos)</h3>
+                  
+                  {normalizedDeps.length === 0 ? (
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '10px' }}>
+                      Esta misión no tiene dependencias.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                      {normalizedDeps.map(depId => {
+                        const depQuest = quests.find(q => q.id === depId);
+                        const depTitle = depQuest ? (depQuest.title || depQuest.id) : depId;
+                        return (
+                          <div 
+                            key={depId} 
+                            style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center', 
+                              background: 'rgba(255,255,255,0.02)', 
+                              padding: '6px 10px', 
+                              borderRadius: '4px',
+                              border: '1px solid rgba(255,255,255,0.05)'
+                            }}
+                          >
+                            <span 
+                              style={{ fontSize: '0.8rem', color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '200px' }}
+                              title={depQuest ? `${depTitle} (${depId})` : depId}
+                            >
+                              🔗 {depTitle}
+                            </span>
+                            <button 
+                              className="btn-icon" 
+                              style={{ color: 'var(--danger-color)', padding: '2px' }}
+                              onClick={() => {
+                                const nextDeps = normalizedDeps.filter(id => id !== depId);
+                                const updatedQuest = {
+                                  ...selectedQuest,
+                                  dependencies: nextDeps.length > 0 ? nextDeps : undefined
+                                };
+                                if (updatedQuest.dependencies === undefined) {
+                                  delete updatedQuest.dependencies;
+                                }
+                                updateQuest(selectedQuest.id, updatedQuest);
+                              }}
+                              title="Eliminar dependencia"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {availableQuestsToAdd.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <select 
+                        id="add-dependency-select"
+                        className="input-field"
+                        style={{ fontSize: '0.8rem', height: '32px', flexGrow: 1 }}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Añadir requisito...</option>
+                        {availableQuestsToAdd.map(q => (
+                          <option key={q.id} value={q.id}>
+                            {q.title || q.id}
+                          </option>
+                        ))}
+                      </select>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0 12px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                        onClick={() => {
+                          const selectEl = document.getElementById('add-dependency-select') as HTMLSelectElement;
+                          const selectedId = selectEl.value;
+                          if (selectedId) {
+                            const nextDeps = [...normalizedDeps, selectedId];
+                            updateQuest(selectedQuest.id, { dependencies: nextDeps });
+                            selectEl.value = "";
+                          }
+                        }}
+                      >
+                        Añadir
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Tasks Section */}
@@ -1531,6 +1792,40 @@ function App() {
               }
             }}>Guardar NBT</button>
           </div>
+        </div>
+      </div>
+    )}
+
+    {contextMenu.visible && (
+      <div 
+        className="context-menu"
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div 
+          className="context-menu-item"
+          onClick={makeSelectedDependOnTarget}
+        >
+          <span>🔗</span> Hacer que las seleccionadas dependan de esta
+        </div>
+        <div 
+          className="context-menu-item"
+          onClick={removeSelectedDependencyOnTarget}
+        >
+          <span>🔓</span> Quitar dependencia de esta en las seleccionadas
+        </div>
+        <div className="context-menu-divider" />
+        <div 
+          className="context-menu-item"
+          onClick={makeTargetDependOnSelected}
+        >
+          <span>🔗</span> Hacer que esta dependa de las seleccionadas
+        </div>
+        <div 
+          className="context-menu-item"
+          onClick={removeTargetDependencyOnSelected}
+        >
+          <span>🔓</span> Quitar dependencias seleccionadas de esta
         </div>
       </div>
     )}

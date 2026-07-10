@@ -22,6 +22,7 @@ interface CanvasProps {
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
   onPointerPosChange?: (pos: { x: number; y: number } | null) => void;
+  onQuestContextMenu?: (questId: string, clientX: number, clientY: number) => void;
   visibleZLevels: number[];
 }
 
@@ -139,7 +140,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   );
 };
 
-export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange, visibleZLevels }) => {
+export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange, onQuestContextMenu, visibleZLevels }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -437,7 +438,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
         }}
         onClick={(e) => {
           // Deseleccionar si se hace clic en el fondo
-          if (e.target === e.target.getStage() && !startPointerPos) {
+          if (e.evt.button === 0 && e.target === e.target.getStage() && !startPointerPos) {
             setSelection({ type: null, ids: [], items: [] });
           }
         }}
@@ -816,7 +817,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
                   x={currentX}
                   y={currentY}
                   draggable
+                  onContextMenu={(e) => {
+                    e.evt.preventDefault();
+                    if (onQuestContextMenu) {
+                      onQuestContextMenu(q.id, e.evt.clientX, e.evt.clientY);
+                    }
+                  }}
                   onClick={(e) => {
+                    if (e.evt.button !== 0) return; // Solo clic izquierdo
                     e.cancelBubble = true;
                     if (e.evt.shiftKey) {
                       const isAlreadySelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
