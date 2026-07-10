@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import useImage from 'use-image';
 import { MousePointer, Hand, Magnet } from 'lucide-react';
 import Konva from 'konva';
@@ -7,7 +7,7 @@ import Konva from 'konva';
 interface CanvasProps {
   quests: any[];
   images: any[];
-  layersVisible: { quests: boolean; images: boolean };
+  layersVisible: { quests: boolean; images: boolean; dependencies: boolean };
   selection: { 
     type: 'quest' | 'image' | 'mixed' | null; 
     ids: (string | number)[]; 
@@ -737,7 +737,64 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
 
         {layersVisible.quests && (
           <Layer>
-            {/* Líneas de dependencia aquí (se calcularían basándose en q.dependencies) */}
+            {/* Líneas de dependencia */}
+            {layersVisible.dependencies && quests.map((q) => {
+              if (!q.dependencies) return null;
+              
+              let depsArray: string[] = [];
+              if (Array.isArray(q.dependencies)) {
+                depsArray = q.dependencies.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+              } else if (typeof q.dependencies === 'string') {
+                depsArray = [q.dependencies];
+              } else if (typeof q.dependencies === 'object' && q.dependencies !== null) {
+                const depObj = q.dependencies as any;
+                if (depObj.id) depsArray = [depObj.id];
+              }
+
+              const isDstSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+              const dstX = getDValue(q.x) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.x : 0);
+              const dstY = getDValue(q.y) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.y : 0);
+              const dstSize = getDValue(q.size) || 1.0;
+              const dstRadius = (40 * dstSize) / 2;
+
+              return depsArray.map((depId) => {
+                const depQuest = quests.find(dq => dq.id === depId);
+                if (!depQuest) return null;
+
+                const isSrcSelected = selection.items.some(item => item.type === 'quest' && item.id === depQuest.id);
+                const srcX = getDValue(depQuest.x) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.x : 0);
+                const srcY = getDValue(depQuest.y) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.y : 0);
+                const srcSize = getDValue(depQuest.size) || 1.0;
+                const srcRadius = (40 * srcSize) / 2;
+
+                const dx = dstX - srcX;
+                const dy = dstY - srcY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > srcRadius + dstRadius) {
+                  const startX = srcX + (dx / dist) * srcRadius;
+                  const startY = srcY + (dy / dist) * srcRadius;
+                  const endX = dstX - (dx / dist) * (dstRadius + 5);
+                  const endY = dstY - (dy / dist) * (dstRadius + 5);
+
+                  return (
+                    <Arrow
+                      key={`${q.id}-dep-${depId}`}
+                      points={[startX, startY, endX, endY]}
+                      stroke="#57606f"
+                      strokeWidth={2.5}
+                      fill="#57606f"
+                      pointerLength={9}
+                      pointerWidth={8}
+                      opacity={0.65}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
+                  );
+                }
+                return null;
+              });
+            })}
             
             {quests.map((q) => {
               const x = getDValue(q.x) * SCALE_FACTOR;

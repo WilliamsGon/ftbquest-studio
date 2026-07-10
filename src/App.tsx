@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2 } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
@@ -77,7 +77,7 @@ function App() {
     });
   }, [availableZLevels]);
   
-  const [layers, setLayers] = useState({ quests: true, images: true });
+  const [layers, setLayers] = useState({ quests: true, images: true, dependencies: true });
   const [rawSelection, setRawSelection] = useState<{
     type: 'quest' | 'image' | 'mixed' | null;
     ids: (string | number)[];
@@ -775,6 +775,15 @@ function App() {
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                 {images.length}
               </span>
+            </div>
+
+            <div 
+              className={`toggle-item ${layers.dependencies ? 'active' : ''}`}
+              onClick={() => setLayers(l => ({ ...l, dependencies: !l.dependencies }))}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Share2 size={16} /> Líneas Dependencia
+              </div>
             </div>
 
             {layers.images && availableZLevels.length > 0 && (
