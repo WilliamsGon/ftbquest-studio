@@ -1341,7 +1341,7 @@ function App() {
 
             // Normalizar dependencias de la misión actual
             const deps = Array.isArray(selectedQuest.dependencies) ? selectedQuest.dependencies : (selectedQuest.dependencies ? [selectedQuest.dependencies] : []);
-            const normalizedDeps = deps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+            const normalizedDeps = deps.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
             const availableQuestsToAdd = quests.filter(q => 
               q.id !== selectedQuest.id && 
               !normalizedDeps.includes(q.id)
@@ -1458,7 +1458,7 @@ function App() {
                     </p>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
-                      {normalizedDeps.map(depId => {
+                      {normalizedDeps.map((depId: string) => {
                         const depQuest = quests.find(q => q.id === depId);
                         const depTitle = depQuest ? (depQuest.title || depQuest.id) : depId;
                         return (
@@ -1484,7 +1484,7 @@ function App() {
                               className="btn-icon" 
                               style={{ color: 'var(--danger-color)', padding: '2px' }}
                               onClick={() => {
-                                const nextDeps = normalizedDeps.filter(id => id !== depId);
+                                const nextDeps = normalizedDeps.filter((id: string) => id !== depId);
                                 const updatedQuest = {
                                   ...selectedQuest,
                                   dependencies: nextDeps.length > 0 ? nextDeps : undefined

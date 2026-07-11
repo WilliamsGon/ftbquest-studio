@@ -744,7 +744,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
               
               let depsArray: string[] = [];
               if (Array.isArray(q.dependencies)) {
-                depsArray = q.dependencies.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+                depsArray = q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
               } else if (typeof q.dependencies === 'string') {
                 depsArray = [q.dependencies];
               } else if (typeof q.dependencies === 'object' && q.dependencies !== null) {
