@@ -1,11 +1,71 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2 } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
 import { TableView } from './components/TableView';
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+    errorInfo: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error, errorInfo: null };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.setState({ errorInfo });
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '30px', background: '#1e1e2e', color: '#f38ba8', border: '2px solid #f38ba8', borderRadius: '12px', margin: '40px', fontFamily: 'monospace', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+          <h2 style={{ margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px', color: '#f38ba8' }}>⚠️ Error en el Editor</h2>
+          <p style={{ fontWeight: 'bold', color: '#cdd6f4', fontSize: '1rem', marginBottom: '15px' }}>{this.state.error?.toString()}</p>
+          <pre style={{ background: '#11111b', padding: '15px', borderRadius: '8px', overflowX: 'auto', fontSize: '0.85rem', color: '#a6adc8', border: '1px solid rgba(255,255,255,0.05)', whiteSpace: 'pre-wrap' }}>
+            {this.state.error?.stack}
+          </pre>
+          <button 
+            className="btn btn-primary" 
+            style={{ marginTop: '20px', background: '#f38ba8', color: '#11111b', fontWeight: 'bold', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }} 
+            onClick={() => window.location.reload()}
+          >
+            Recargar Aplicación
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const generateHexId = () => uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
+
+const getDValue = (val: any): any => {
+  if (val === undefined || val === null) return val;
+  if (typeof val === 'object' && val !== null) {
+    if ('value' in val) {
+      return val.value;
+    }
+  }
+  return val;
+};
 
 const decimalToHexColor = (val: any): string => {
   if (val === undefined || val === null) return '#ffffff';
@@ -852,7 +912,8 @@ function App() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
+      <>
     <div className="app-container">
       {/* Sidebar Izquierda */}
       <div className="sidebar-left glass-panel">
@@ -1343,9 +1404,13 @@ function App() {
             const deps = Array.isArray(selectedQuest.dependencies) ? selectedQuest.dependencies : (selectedQuest.dependencies ? [selectedQuest.dependencies] : []);
             const normalizedDeps = deps.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
             const availableQuestsToAdd = quests.filter(q => 
-              q.id !== selectedQuest.id && 
+              q && q.id && q.id !== selectedQuest.id && 
               !normalizedDeps.includes(q.id)
-            ).sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id));
+            ).sort((a, b) => {
+              const titleA = String(getDValue(a.title) || a.id || '');
+              const titleB = String(getDValue(b.title) || b.id || '');
+              return titleA.localeCompare(titleB);
+            });
 
             return (
               <div>
@@ -1357,8 +1422,15 @@ function App() {
                 <div className="input-group">
                   <label>Título</label>
                   <input type="text" className="input-field" 
-                    value={selectedQuest.title || ''} 
-                    onChange={(e) => updateQuest(selection.id as string, { title: e.target.value })}
+                    value={getDValue(selectedQuest.title) ?? ''} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (typeof selectedQuest.title === 'object' && selectedQuest.title !== null) {
+                        updateQuest(selection.id as string, { title: { ...selectedQuest.title, value: val } });
+                      } else {
+                        updateQuest(selection.id as string, { title: val });
+                      }
+                    }}
                   />
                 </div>
                 <div className="input-group">
@@ -1459,8 +1531,8 @@ function App() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
                       {normalizedDeps.map((depId: string) => {
-                        const depQuest = quests.find(q => q.id === depId);
-                        const depTitle = depQuest ? (depQuest.title || depQuest.id) : depId;
+                        const depQuest = quests.find(q => q && q.id === depId);
+                        const depTitle = depQuest ? String(getDValue(depQuest.title) || depQuest.id) : depId;
                         return (
                           <div 
                             key={depId} 
@@ -1515,7 +1587,7 @@ function App() {
                         <option value="" disabled>Añadir requisito...</option>
                         {availableQuestsToAdd.map(q => (
                           <option key={q.id} value={q.id}>
-                            {q.title || q.id}
+                            {String(getDValue(q.title) || q.id)}
                           </option>
                         ))}
                       </select>
@@ -1665,6 +1737,7 @@ function App() {
                               newRewards[rIdx] = { ...newRewards[rIdx], type: newType };
                               if (newType === 'xp' && newRewards[rIdx].xp === undefined) newRewards[rIdx].xp = 10;
                               if (newType === 'xp_levels' && newRewards[rIdx].xp_levels === undefined) newRewards[rIdx].xp_levels = 5;
+                              if (newType === 'command' && newRewards[rIdx].command === undefined) newRewards[rIdx].command = "";
                               if (newType === 'item' && !newRewards[rIdx].item) {
                                 newRewards[rIdx].item = "minecraft:stone";
                                 newRewards[rIdx].count = 1;
@@ -1674,6 +1747,7 @@ function App() {
                           >
                             <option value="xp">XP</option>
                             <option value="xp_levels">XP Levels</option>
+                            <option value="command">Command</option>
                             <option value="item">Item</option>
                           </select>
                           <Trash2 size={14} style={{ cursor: 'pointer', color: 'var(--danger-color)' }} onClick={() => {
@@ -1684,10 +1758,15 @@ function App() {
                         </div>
                         {reward.type === 'xp' && (
                           <div className="input-group">
-                            <input type="number" className="input-field" value={reward.xp || 0} placeholder="Cantidad de XP"
-                              onChange={(e) => {
+                            <input type="number" className="input-field" value={getDValue(reward.xp) ?? 0} placeholder="Cantidad de XP"
+                              onChange={(e: any) => {
                                 const newRewards = [...rewardsArray];
-                                newRewards[rIdx].xp = parseInt(e.target.value);
+                                const val = parseInt(e.target.value);
+                                if (typeof newRewards[rIdx].xp === 'object' && newRewards[rIdx].xp !== null) {
+                                  newRewards[rIdx].xp = { ...newRewards[rIdx].xp, value: val };
+                                } else {
+                                  newRewards[rIdx].xp = val;
+                                }
                                 updateQuest(selection.id as string, { rewards: newRewards });
                               }}
                             />
@@ -1695,54 +1774,97 @@ function App() {
                         )}
                         {reward.type === 'xp_levels' && (
                           <div className="input-group">
-                            <input type="number" className="input-field" value={reward.xp_levels || 0} placeholder="Niveles de XP"
-                              onChange={(e) => {
+                            <input type="number" className="input-field" value={getDValue(reward.xp_levels) ?? 0} placeholder="Niveles de XP"
+                              onChange={(e: any) => {
                                 const newRewards = [...rewardsArray];
-                                newRewards[rIdx].xp_levels = parseInt(e.target.value);
+                                const val = parseInt(e.target.value);
+                                if (typeof newRewards[rIdx].xp_levels === 'object' && newRewards[rIdx].xp_levels !== null) {
+                                  newRewards[rIdx].xp_levels = { ...newRewards[rIdx].xp_levels, value: val };
+                                } else {
+                                  newRewards[rIdx].xp_levels = val;
+                                }
                                 updateQuest(selection.id as string, { rewards: newRewards });
                               }}
                             />
                           </div>
                         )}
-                        {reward.type === 'item' && (
-                          <div className="row">
-                            <div className="input-group" style={{ flex: 2 }}>
-                                <div style={{ display: 'flex', gap: '4px' }}>
-                                  <input type="text" className="input-field" value={typeof reward.item === 'string' ? reward.item : (reward.item?.id || '')} placeholder="Item (ej. minecraft:dirt)" 
-                                    onChange={(e) => {
-                                      const newRewards = [...rewardsArray];
-                                      if (typeof newRewards[rIdx].item === 'object' && newRewards[rIdx].item !== null) {
-                                        newRewards[rIdx].item = { ...newRewards[rIdx].item, id: e.target.value };
-                                      } else {
-                                        newRewards[rIdx].item = e.target.value;
-                                      }
-                                      updateQuest(selection.id as string, { rewards: newRewards });
-                                    }}
-                                  />
-                                  <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
-                                    setNbtEditor({
-                                      title: 'Editar Item NBT (Reward)',
-                                      value: JSON.stringify(rewardsArray[rIdx].item, null, 2),
-                                      onSave: (newVal) => {
-                                        const newRewards = [...rewardsArray];
-                                        newRewards[rIdx].item = newVal;
-                                        updateQuest(selection.id as string, { rewards: newRewards });
-                                      }
-                                    });
-                                  }}><Settings size={16} /></button>
-                                </div>
-                              </div>
-                            <div className="input-group" style={{ flex: 1 }}>
-                              <input type="number" className="input-field" value={reward.count || 1} placeholder="Cantidad"
-                                onChange={(e) => {
-                                  const newRewards = [...rewardsArray];
-                                  newRewards[rIdx].count = parseInt(e.target.value);
-                                  updateQuest(selection.id as string, { rewards: newRewards });
-                                }}
-                              />
-                            </div>
+                        {reward.type === 'command' && (
+                          <div className="input-group">
+                            <input type="text" className="input-field" value={reward.command || ''} placeholder="Comando (ej. /give @p diamond 1)"
+                              onChange={(e: any) => {
+                                const newRewards = [...rewardsArray];
+                                newRewards[rIdx].command = e.target.value;
+                                updateQuest(selection.id as string, { rewards: newRewards });
+                              }}
+                            />
                           </div>
                         )}
+                        {reward.type === 'item' && (() => {
+                          const rewardCountVal = reward.count !== undefined 
+                            ? getDValue(reward.count) 
+                            : (typeof reward.item === 'object' && reward.item !== null
+                                ? (getDValue(reward.item.Count) ?? getDValue(reward.item.count) ?? 1)
+                                : 1);
+
+                          return (
+                            <div className="row">
+                              <div className="input-group" style={{ flex: 2 }}>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    <input type="text" className="input-field" value={typeof reward.item === 'string' ? reward.item : (reward.item?.id || '')} placeholder="Item (ej. minecraft:dirt)" 
+                                      onChange={(e) => {
+                                        const newRewards = [...rewardsArray];
+                                        if (typeof newRewards[rIdx].item === 'object' && newRewards[rIdx].item !== null) {
+                                          newRewards[rIdx].item = { ...newRewards[rIdx].item, id: e.target.value };
+                                        } else {
+                                          newRewards[rIdx].item = e.target.value;
+                                        }
+                                        updateQuest(selection.id as string, { rewards: newRewards });
+                                      }}
+                                    />
+                                    <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
+                                      setNbtEditor({
+                                        title: 'Editar Item NBT (Reward)',
+                                        value: JSON.stringify(rewardsArray[rIdx].item, null, 2),
+                                        onSave: (newVal) => {
+                                          const newRewards = [...rewardsArray];
+                                          newRewards[rIdx].item = newVal;
+                                          updateQuest(selection.id as string, { rewards: newRewards });
+                                        }
+                                      });
+                                    }}><Settings size={16} /></button>
+                                  </div>
+                                </div>
+                              <div className="input-group" style={{ flex: 1 }}>
+                                <input type="number" className="input-field" value={rewardCountVal} placeholder="Cantidad"
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 1;
+                                    const newRewards = [...rewardsArray];
+                                    
+                                    if (typeof reward.item === 'object' && reward.item !== null && (reward.item.Count !== undefined || reward.item.count !== undefined)) {
+                                      const isCapitalCount = reward.item.Count !== undefined;
+                                      const countKey = isCapitalCount ? 'Count' : 'count';
+                                      const currentCountObj = reward.item[countKey];
+                                      
+                                      newRewards[rIdx].item = {
+                                        ...reward.item,
+                                        [countKey]: typeof currentCountObj === 'object' && currentCountObj !== null
+                                          ? { ...currentCountObj, value: val }
+                                          : val
+                                      };
+                                    } else {
+                                      if (typeof reward.count === 'object' && reward.count !== null) {
+                                        newRewards[rIdx].count = { ...reward.count, value: val };
+                                      } else {
+                                        newRewards[rIdx].count = val;
+                                      }
+                                    }
+                                    updateQuest(selection.id as string, { rewards: newRewards });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -1830,6 +1952,7 @@ function App() {
       </div>
     )}
     </>
+    </ErrorBoundary>
   );
 }
 
