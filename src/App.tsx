@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2 } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { v4 as uuidv4 } from 'uuid';
