@@ -670,20 +670,71 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                     </td>
                     <td>
                       {r.rewardObj.type === 'command' ? (
-                        <input 
-                          type="text" 
-                          className="table-input"
-                          value={itemVal}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (typeof r.rewardObj.command === 'object' && r.rewardObj.command !== null) {
-                              handleUpdateReward(r.questId, r.rewardIndex, { command: { ...r.rewardObj.command, value: val } });
-                            } else {
-                              handleUpdateReward(r.questId, r.rewardIndex, { command: val });
-                            }
-                          }}
-                          placeholder="/give @p ..."
-                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', minWidth: '220px' }}>
+                          <input 
+                            type="text" 
+                            className="table-input"
+                            value={itemVal}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (typeof r.rewardObj.command === 'object' && r.rewardObj.command !== null) {
+                                handleUpdateReward(r.questId, r.rewardIndex, { command: { ...r.rewardObj.command, value: val } });
+                              } else {
+                                handleUpdateReward(r.questId, r.rewardIndex, { command: val });
+                              }
+                            }}
+                            placeholder="/give @p ..."
+                            style={{ width: '100%' }}
+                          />
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <select 
+                              className="table-input" 
+                              style={{ padding: '2px 4px', fontSize: '0.75rem', height: '24px', flex: 1 }}
+                              value={r.rewardObj.auto || 'default'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const quest = quests.find(q => q.id === r.questId);
+                                if (!quest) return;
+                                const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+                                const updatedReward = { ...rewardsArray[r.rewardIndex] };
+                                if (val === 'default') {
+                                  delete updatedReward.auto;
+                                } else {
+                                  updatedReward.auto = val;
+                                }
+                                rewardsArray[r.rewardIndex] = updatedReward;
+                                updateQuest(r.questId, { rewards: rewardsArray });
+                              }}
+                            >
+                              <option value="default">Auto: Por Defecto</option>
+                              <option value="enabled">Auto: Enabled</option>
+                              <option value="disabled">Auto: Disabled</option>
+                              <option value="invisible">Auto: Invisible</option>
+                              <option value="no_toast">Auto: No Toast</option>
+                            </select>
+                            
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                              <input 
+                                type="checkbox"
+                                checked={r.rewardObj.elevate_perms || false}
+                                onChange={(e) => {
+                                  const quest = quests.find(q => q.id === r.questId);
+                                  if (!quest) return;
+                                  const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+                                  const updatedReward = { ...rewardsArray[r.rewardIndex] };
+                                  if (e.target.checked) {
+                                    updatedReward.elevate_perms = true;
+                                  } else {
+                                    delete updatedReward.elevate_perms;
+                                  }
+                                  rewardsArray[r.rewardIndex] = updatedReward;
+                                  updateQuest(r.questId, { rewards: rewardsArray });
+                                }}
+                              />
+                              Priv.
+                            </label>
+                          </div>
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <input 

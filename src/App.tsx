@@ -1790,14 +1790,56 @@ function App() {
                           </div>
                         )}
                         {reward.type === 'command' && (
-                          <div className="input-group">
-                            <input type="text" className="input-field" value={reward.command || ''} placeholder="Comando (ej. /give @p diamond 1)"
-                              onChange={(e: any) => {
-                                const newRewards = [...rewardsArray];
-                                newRewards[rIdx].command = e.target.value;
-                                updateQuest(selection.id as string, { rewards: newRewards });
-                              }}
-                            />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="input-group">
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Comando</label>
+                              <input type="text" className="input-field" value={reward.command || ''} placeholder="Comando (ej. /give @p diamond 1)"
+                                onChange={(e: any) => {
+                                  const newRewards = [...rewardsArray];
+                                  newRewards[rIdx].command = e.target.value;
+                                  updateQuest(selection.id as string, { rewards: newRewards });
+                                }}
+                              />
+                            </div>
+                            <div className="row" style={{ gap: '10px' }}>
+                              <div className="input-group" style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Otorga Auto (auto)</label>
+                                <select className="input-field" style={{ fontSize: '0.8rem', height: '32px' }}
+                                  value={reward.auto || 'default'}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const newRewards = [...rewardsArray];
+                                    if (val === 'default') {
+                                      delete newRewards[rIdx].auto;
+                                    } else {
+                                      newRewards[rIdx].auto = val;
+                                    }
+                                    updateQuest(selection.id as string, { rewards: newRewards });
+                                  }}
+                                >
+                                  <option value="default">Por Defecto</option>
+                                  <option value="enabled">Enabled (Auto)</option>
+                                  <option value="disabled">Disabled (Manual)</option>
+                                  <option value="invisible">Invisible</option>
+                                  <option value="no_toast">No Toast</option>
+                                </select>
+                              </div>
+                              <div className="input-group" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '8px', marginTop: '14px' }}>
+                                <input type="checkbox" id={`elevate_perms_${rIdx}`}
+                                  checked={reward.elevate_perms || false}
+                                  onChange={(e) => {
+                                    const newRewards = [...rewardsArray];
+                                    if (e.target.checked) {
+                                      newRewards[rIdx].elevate_perms = true;
+                                    } else {
+                                      delete newRewards[rIdx].elevate_perms;
+                                    }
+                                    updateQuest(selection.id as string, { rewards: newRewards });
+                                  }}
+                                />
+                                <label htmlFor={`elevate_perms_${rIdx}`} style={{ fontSize: '0.8rem', marginBottom: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>Elevar Permisos</label>
+                              </div>
+                            </div>
                           </div>
                         )}
                         {reward.type === 'item' && (() => {
