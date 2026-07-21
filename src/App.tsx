@@ -119,23 +119,33 @@ function App() {
   }, [images]);
 
   const [visibleZLevels, setVisibleZLevels] = useState<number[]>([]);
+  const prevAvailableZLevelsRef = useRef<number[]>([]);
 
   // Sincronizar niveles Z visibles cuando cambian los disponibles
   useEffect(() => {
     if (availableZLevels.length === 0) {
       setVisibleZLevels([]);
+      prevAvailableZLevelsRef.current = [];
       return;
     }
     setVisibleZLevels(prev => {
-      // Si estaba vacío, activamos todos por defecto
-      if (prev.length === 0) {
+      // Si el estado visible anterior estaba vacío y no había niveles previos, activamos todos por defecto
+      if (prev.length === 0 && prevAvailableZLevelsRef.current.length === 0) {
         return [...availableZLevels];
       }
-      // Mantener los visibles que sigan estando y añadir los nuevos niveles detectados
+      
+      // Filtrar los niveles visibles que sigan existiendo en los niveles disponibles actuales
       const currentVisible = prev.filter(l => availableZLevels.includes(l));
-      const newLevels = availableZLevels.filter(l => !prev.includes(l));
-      return [...currentVisible, ...newLevels].sort((a, b) => a - b);
+      
+      // Los niveles verdaderamente nuevos son aquellos que están en availableZLevels
+      // pero que NO estaban en el conjunto de niveles disponibles del renderizado anterior (independientemente de si estaban activos o no)
+      const prevAvailable = prevAvailableZLevelsRef.current;
+      const trulyNewLevels = availableZLevels.filter(l => !prevAvailable.includes(l));
+      
+      return [...currentVisible, ...trulyNewLevels].sort((a, b) => a - b);
     });
+    
+    prevAvailableZLevelsRef.current = [...availableZLevels];
   }, [availableZLevels]);
   
   const [layers, setLayers] = useState({ quests: true, images: true, dependencies: true });
@@ -1193,10 +1203,157 @@ function App() {
                 );
                 const displayColor = shareSameColor ? decimalToHexColor(firstImgColor) : '#ffffff';
 
+                const firstImgPath = images[selectedImages[0].id as number]?.image;
+                const shareSamePath = selectedImages.every(img => images[img.id as number]?.image === firstImgPath);
+
+                const firstImgWidth = getDValue(images[selectedImages[0].id as number]?.width);
+                const shareSameWidth = selectedImages.every(img => getDValue(images[img.id as number]?.width) === firstImgWidth);
+
+                const firstImgHeight = getDValue(images[selectedImages[0].id as number]?.height);
+                const shareSameHeight = selectedImages.every(img => getDValue(images[img.id as number]?.height) === firstImgHeight);
+
+                const firstImgRot = getDValue(images[selectedImages[0].id as number]?.rotation) ?? 0;
+                const shareSameRot = selectedImages.every(img => (getDValue(images[img.id as number]?.rotation) ?? 0) === firstImgRot);
+
+                const firstImgAlpha = getDValue(images[selectedImages[0].id as number]?.alpha) ?? 255;
+                const shareSameAlpha = selectedImages.every(img => (getDValue(images[img.id as number]?.alpha) ?? 255) === firstImgAlpha);
+
+                const firstImgOrder = getDValue(images[selectedImages[0].id as number]?.order) ?? 1;
+                const shareSameOrder = selectedImages.every(img => (getDValue(images[img.id as number]?.order) ?? 1) === firstImgOrder);
+
                 return (
                   <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>Propiedades de las Imágenes ({selectedImages.length})</h3>
+                    
+                    <div className="input-group">
+                      <label>Textura común</label>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        placeholder={shareSamePath ? "" : "Mixto"}
+                        value={shareSamePath ? (firstImgPath || '') : ''} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const updatesList = selectedImages.map(img => ({
+                            index: img.id as number,
+                            updates: { image: val }
+                          }));
+                          updateImage(updatesList);
+                        }}
+                      />
+                    </div>
+
+                    <div className="row" style={{ marginTop: '10px' }}>
+                      <div className="input-group">
+                        <label>Ancho común (Width)</label>
+                        <input 
+                          type="number" 
+                          step="0.5" 
+                          className="input-field" 
+                          placeholder={shareSameWidth ? "" : "Mixto"}
+                          value={shareSameWidth ? (firstImgWidth ?? 2) : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              const updatesList = selectedImages.map(img => ({
+                                index: img.id as number,
+                                updates: { width: val }
+                              }));
+                              updateImage(updatesList);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Alto común (Height)</label>
+                        <input 
+                          type="number" 
+                          step="0.5" 
+                          className="input-field" 
+                          placeholder={shareSameHeight ? "" : "Mixto"}
+                          value={shareSameHeight ? (firstImgHeight ?? 2) : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              const updatesList = selectedImages.map(img => ({
+                                index: img.id as number,
+                                updates: { height: val }
+                              }));
+                              updateImage(updatesList);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="row" style={{ marginTop: '10px' }}>
+                      <div className="input-group">
+                        <label>Rotación común</label>
+                        <input 
+                          type="number" 
+                          step="5" 
+                          className="input-field" 
+                          placeholder={shareSameRot ? "" : "Mixto"}
+                          value={shareSameRot ? firstImgRot : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              const updatesList = selectedImages.map(img => ({
+                                index: img.id as number,
+                                updates: { rotation: val }
+                              }));
+                              updateImage(updatesList);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Opacidad común</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="255" 
+                          className="input-field" 
+                          placeholder={shareSameAlpha ? "" : "Mixto"}
+                          value={shareSameAlpha ? firstImgAlpha : ''} 
+                          onChange={(e) => {
+                            let val = parseInt(e.target.value);
+                            if (!isNaN(val)) {
+                              val = Math.max(0, Math.min(255, val));
+                              const updatesList = selectedImages.map(img => ({
+                                index: img.id as number,
+                                updates: { alpha: val }
+                              }));
+                              updateImage(updatesList);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="input-group" style={{ marginTop: '10px', marginBottom: '15px' }}>
+                      <label>Order común (Z-Index)</label>
+                      <input 
+                        type="number" 
+                        step="1" 
+                        className="input-field" 
+                        placeholder={shareSameOrder ? "" : "Mixto"}
+                        value={shareSameOrder ? firstImgOrder : ''} 
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val)) {
+                            const updatesList = selectedImages.map(img => ({
+                              index: img.id as number,
+                              updates: { order: val }
+                            }));
+                            updateImage(updatesList);
+                          }
+                        }}
+                      />
+                    </div>
+
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
-                      Color común ({selectedImages.length} {selectedImages.length === 1 ? 'imagen' : 'imágenes'})
+                      Color común
                     </label>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <input 
