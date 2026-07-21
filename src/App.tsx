@@ -120,6 +120,7 @@ function App() {
 
   const [visibleZLevels, setVisibleZLevels] = useState<number[]>([]);
   const prevAvailableZLevelsRef = useRef<number[]>([]);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
 
   // Sincronizar niveles Z visibles cuando cambian los disponibles
   useEffect(() => {
@@ -444,10 +445,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processFile = (file: File) => {
     setFilename(file.name);
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -474,6 +472,42 @@ function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      if (file.name.endsWith('.snbt')) {
+        processFile(file);
+      } else {
+        alert('Por favor, arrastra únicamente archivos con extensión .snbt');
+      }
+    }
   };
 
   const handleExport = () => {
@@ -925,7 +959,12 @@ function App() {
   return (
     <ErrorBoundary>
       <>
-    <div className="app-container">
+    <div 
+      className="app-container"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Sidebar Izquierda */}
       <div className="sidebar-left glass-panel">
         <div className="header">
@@ -2148,6 +2187,18 @@ function App() {
           onClick={removeTargetDependencyOnSelected}
         >
           <span>🔓</span> Quitar dependencias seleccionadas de esta
+        </div>
+      </div>
+    )}
+
+    {isDraggingFile && (
+      <div className="drop-zone-overlay">
+        <div className="drop-zone-container">
+          <div className="drop-zone-icon-wrapper">
+            <Upload size={48} />
+          </div>
+          <h2 className="drop-zone-title">Suelta el archivo aquí para importar</h2>
+          <p className="drop-zone-subtitle">Soporta archivos con extensión .snbt</p>
         </div>
       </div>
     )}
