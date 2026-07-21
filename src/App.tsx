@@ -189,7 +189,7 @@ function App() {
   }, [contextMenu.visible]);
   
   // Historial de cambios
-  const [history, setHistory] = useState<{ quests: any[]; images: any[] }[]>([]);
+  const [history, setHistory] = useState<{ quests: any[]; images: any[]; snbtData: any }[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyRef = useRef(history);
   const historyIndexRef = useRef(historyIndex);
@@ -252,9 +252,14 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Función unificada para actualizar estado y guardar en el historial
-  const updateState = (newQuests: any[], newImages: any[], bypassHistory = false) => {
+  const updateState = (newQuests: any[], newImages: any[], bypassHistory = false, newSnbtData?: any) => {
     setQuests(newQuests);
     setImages(newImages);
+    
+    const finalSnbtData = newSnbtData !== undefined ? newSnbtData : snbtData;
+    if (newSnbtData !== undefined) {
+      setSnbtData(newSnbtData);
+    }
     
     if (!bypassHistory) {
       const idx = historyIndexRef.current;
@@ -263,8 +268,9 @@ function App() {
       
       const clonedQuests = JSON.parse(JSON.stringify(newQuests));
       const clonedImages = JSON.parse(JSON.stringify(newImages));
+      const clonedSnbt = finalSnbtData ? JSON.parse(JSON.stringify(finalSnbtData)) : null;
       
-      const nextHistory = [...cleanHistory, { quests: clonedQuests, images: clonedImages }];
+      const nextHistory = [...cleanHistory, { quests: clonedQuests, images: clonedImages, snbtData: clonedSnbt }];
       setHistory(nextHistory);
       setHistoryIndex(cleanHistory.length);
     }
@@ -278,6 +284,9 @@ function App() {
       const prevRecord = hist[prevIndex];
       setQuests(JSON.parse(JSON.stringify(prevRecord.quests)));
       setImages(JSON.parse(JSON.stringify(prevRecord.images)));
+      if (prevRecord.snbtData) {
+        setSnbtData(JSON.parse(JSON.stringify(prevRecord.snbtData)));
+      }
       setHistoryIndex(prevIndex);
       setSelection({ type: null, ids: [] });
     }
@@ -291,6 +300,9 @@ function App() {
       const nextRecord = hist[nextIndex];
       setQuests(JSON.parse(JSON.stringify(nextRecord.quests)));
       setImages(JSON.parse(JSON.stringify(nextRecord.images)));
+      if (nextRecord.snbtData) {
+        setSnbtData(JSON.parse(JSON.stringify(nextRecord.snbtData)));
+      }
       setHistoryIndex(nextIndex);
       setSelection({ type: null, ids: [] });
     }
@@ -463,7 +475,8 @@ function App() {
         // Inicializar historial con estado limpio
         setHistory([{ 
           quests: JSON.parse(JSON.stringify(initialQuests)), 
-          images: JSON.parse(JSON.stringify(initialImages)) 
+          images: JSON.parse(JSON.stringify(initialImages)),
+          snbtData: JSON.parse(JSON.stringify(parsed))
         }]);
         setHistoryIndex(0);
       } catch (err) {
@@ -1473,9 +1486,158 @@ function App() {
           )}
 
           {selection.items.length === 0 && (
-            <div className="empty-state">
-              <p>Selecciona una misión o imagen para ver sus propiedades.</p>
-            </div>
+            snbtData ? (
+              <div>
+                <h2 className="section-title">Propiedades del Capítulo</h2>
+                
+                <div className="input-group">
+                  <label>Título</label>
+                  <input 
+                    type="text" 
+                    className="input-field"
+                    value={getDValue(snbtData.title) || ''}
+                    onChange={(e) => {
+                      const updated = { ...snbtData, title: e.target.value };
+                      updateState(quests, images, false, updated);
+                    }}
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label>ID del Capítulo</label>
+                  <input 
+                    type="text" 
+                    className="input-field"
+                    value={getDValue(snbtData.id) || ''}
+                    onChange={(e) => {
+                      const updated = { ...snbtData, id: e.target.value };
+                      updateState(quests, images, false, updated);
+                    }}
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label>Grupo</label>
+                  <input 
+                    type="text" 
+                    className="input-field"
+                    value={getDValue(snbtData.group) || ''}
+                    onChange={(e) => {
+                      const updated = { ...snbtData, group: e.target.value };
+                      updateState(quests, images, false, updated);
+                    }}
+                  />
+                </div>
+
+                <div className="row">
+                  <div className="input-group">
+                    <label>Order Index</label>
+                    <input 
+                      type="number" 
+                      className="input-field"
+                      value={getDValue(snbtData.order_index) ?? 0}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, order_index: parseInt(e.target.value) || 0 };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label>Autofocus ID</label>
+                    <input 
+                      type="text" 
+                      className="input-field"
+                      value={getDValue(snbtData.autofocus_id) || ''}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, autofocus_id: e.target.value };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="input-group">
+                  <label>Forma de Misión por Defecto</label>
+                  <select 
+                    className="input-field"
+                    value={getDValue(snbtData.default_quest_shape) || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const updated = { ...snbtData };
+                      if (val === '') {
+                        delete updated.default_quest_shape;
+                      } else {
+                        updated.default_quest_shape = val;
+                      }
+                      updateState(quests, images, false, updated);
+                    }}
+                  >
+                    <option value="">Por defecto (Círculo)</option>
+                    <option value="circle">Círculo</option>
+                    <option value="square">Cuadrado</option>
+                    <option value="diamond">Diamante</option>
+                    <option value="hexagon">Hexágono</option>
+                    <option value="octagon">Octágono</option>
+                    <option value="gear">Engranaje</option>
+                    <option value="heart">Corazón</option>
+                  </select>
+                </div>
+
+                <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <input 
+                      type="checkbox"
+                      checked={snbtData.default_hide_dependency_lines === true}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, default_hide_dependency_lines: e.target.checked };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                    Ocultar líneas de dependencia por defecto
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <input 
+                      type="checkbox"
+                      checked={snbtData.hide_quest_until_deps_complete === true}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, hide_quest_until_deps_complete: e.target.checked };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                    Ocultar misiones hasta completar dependencias
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <input 
+                      type="checkbox"
+                      checked={snbtData.always_invisible === true}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, always_invisible: e.target.checked };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                    Siempre invisible
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    <input 
+                      type="checkbox"
+                      checked={snbtData.disable_toast === true}
+                      onChange={(e) => {
+                        const updated = { ...snbtData, disable_toast: e.target.checked };
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                    Desactivar Toasts
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>Carga un archivo .snbt para ver sus propiedades.</p>
+              </div>
+            )
           )}
           
           {selection.type === 'image' && selection.id !== null && (
