@@ -807,3 +807,312 @@ h1, h2, h3 {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
+
+/* Pinned Clipboard / Reusable Assets Styles */
+
+.canvas-toolbar {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.pinned-toggle-btn {
+  background: rgba(30, 30, 46, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+.pinned-toggle-btn:hover {
+  background: var(--accent-color);
+  color: #11111b;
+  border-color: var(--accent-hover);
+  transform: translateY(-2px);
+}
+
+.pinned-count-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 2px;
+}
+
+.pinned-toggle-btn:hover .pinned-count-badge {
+  background: rgba(17, 17, 27, 0.2);
+}
+
+.pinned-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 320px;
+  height: 100%;
+  background: rgba(22, 25, 30, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4);
+  z-index: 1005;
+  display: flex;
+  flex-direction: column;
+  animation: drawerSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes drawerSlideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.pinned-drawer-header {
+  padding: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pinned-drawer-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.pinned-drawer-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.pinned-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.pinned-drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pinned-asset-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.pinned-asset-card:hover {
+  border-color: rgba(123, 97, 255, 0.3);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pinned-asset-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pinned-asset-type-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.pinned-asset-type-badge.quest {
+  background: rgba(123, 97, 255, 0.15);
+  color: var(--accent-hover);
+}
+
+.pinned-asset-type-badge.image {
+  background: rgba(36, 214, 185, 0.15);
+  color: #24d6b9;
+}
+
+.pinned-asset-type-badge.group {
+  background: rgba(255, 179, 71, 0.15);
+  color: #ffb347;
+}
+
+.pinned-asset-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 2px 0 0 0;
+}
+
+.pinned-asset-detail {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin: 0;
+}
+
+.pinned-asset-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pinned-asset-btn-paste {
+  flex: 1;
+  background: rgba(123, 97, 255, 0.2);
+  border: 1px solid rgba(123, 97, 255, 0.3);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.pinned-asset-btn-paste:hover {
+  background: var(--accent-color);
+  color: #11111b;
+  border-color: var(--accent-hover);
+}
+
+.pinned-asset-btn-delete {
+  background: rgba(255, 60, 60, 0.15);
+  border: 1px solid rgba(255, 60, 60, 0.25);
+  color: #ff8888;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.pinned-asset-btn-delete:hover {
+  background: #ff5555;
+  color: #11111b;
+  border-color: #ff3333;
+}
+
+/* Toast/Growl Notification Styles */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 200000;
+  pointer-events: none; /* Permite clicks a través del área vacía del contenedor */
+}
+
+.toast-item {
+  pointer-events: auto; /* Permite clicks e interacción dentro de cada toast */
+  background: rgba(30, 30, 46, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(123, 97, 255, 0.35);
+  color: var(--text-primary);
+  padding: 14px 24px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 250px;
+  max-width: 450px;
+  animation: toastSlideIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.toast-item.success {
+  border-color: rgba(36, 214, 185, 0.5);
+  background: rgba(30, 30, 46, 0.95);
+}
+
+.toast-item.success .toast-icon {
+  color: #24d6b9;
+}
+
+.toast-item.info {
+  border-color: rgba(123, 97, 255, 0.5);
+}
+
+.toast-item.info .toast-icon {
+  color: var(--accent-color);
+}
+
+.toast-item.warning {
+  border-color: rgba(255, 179, 71, 0.5);
+}
+
+.toast-item.warning .toast-icon {
+  color: #ffb347;
+}
+
+.toast-icon {
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toast-message {
+  flex: 1;
+  margin: 0;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

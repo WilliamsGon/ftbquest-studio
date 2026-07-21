@@ -24,6 +24,9 @@ interface CanvasProps {
   onPointerPosChange?: (pos: { x: number; y: number } | null) => void;
   onQuestContextMenu?: (questId: string, clientX: number, clientY: number) => void;
   visibleZLevels: number[];
+  isPinnedDrawerOpen: boolean;
+  setIsPinnedDrawerOpen: (open: boolean) => void;
+  pinnedCount: number;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -140,7 +143,21 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   );
 };
 
-export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisible, selection, setSelection, updateQuest, updateImage, onPointerPosChange, onQuestContextMenu, visibleZLevels }) => {
+export const EditorCanvas: React.FC<CanvasProps> = ({ 
+  quests, 
+  images, 
+  layersVisible, 
+  selection, 
+  setSelection, 
+  updateQuest, 
+  updateImage, 
+  onPointerPosChange, 
+  onQuestContextMenu, 
+  visibleZLevels,
+  isPinnedDrawerOpen,
+  setIsPinnedDrawerOpen,
+  pinnedCount
+}) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -287,6 +304,25 @@ export const EditorCanvas: React.FC<CanvasProps> = ({ quests, images, layersVisi
         >
           <Magnet size={16} />
           Imán (Snap)
+        </button>
+        <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+        <button 
+          className={`toolbar-btn ${isPinnedDrawerOpen ? 'active' : ''}`}
+          onClick={() => setIsPinnedDrawerOpen(!isPinnedDrawerOpen)}
+          title="Ver elementos anclados en el portapapeles (Prefabs)"
+        >
+          <span>📌</span> Anclados
+          {pinnedCount > 0 && (
+            <span style={{
+              background: isPinnedDrawerOpen ? 'rgba(17, 17, 27, 0.2)' : 'rgba(255,255,255,0.2)',
+              color: isPinnedDrawerOpen ? '#11111b' : 'inherit',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              padding: '1px 5px',
+              borderRadius: '8px',
+              marginLeft: '4px'
+            }}>{pinnedCount}</span>
+          )}
         </button>
       </div>
 

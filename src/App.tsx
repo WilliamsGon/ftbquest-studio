@@ -122,6 +122,34 @@ function App() {
   const prevAvailableZLevelsRef = useRef<number[]>([]);
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
 
+  const [pinnedAssets, setPinnedAssets] = useState<any[]>(() => {
+    try {
+      const stored = localStorage.getItem('ftb_quest_pinned_assets');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isPinnedDrawerOpen, setIsPinnedDrawerOpen] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: string }[]>([]);
+  
+  const showToast = (message: string, type = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  };
+
+  const savePinnedAssets = (assets: any[]) => {
+    setPinnedAssets(assets);
+    try {
+      localStorage.setItem('ftb_quest_pinned_assets', JSON.stringify(assets));
+    } catch (e) {
+      console.error('Error saving pinned assets:', e);
+    }
+  };
+
   // Sincronizar niveles Z visibles cuando cambian los disponibles
   useEffect(() => {
     if (availableZLevels.length === 0) {
@@ -481,7 +509,7 @@ function App() {
         setHistoryIndex(0);
       } catch (err) {
         console.error("Error parsing SNBT:", err);
-        alert("Error al parsear el archivo SNBT. Revisa la consola.");
+        showToast("Error al parsear el archivo SNBT. Revisa la consola.", "warning");
       }
     };
     reader.readAsText(file);
@@ -518,9 +546,187 @@ function App() {
       if (file.name.endsWith('.snbt')) {
         processFile(file);
       } else {
-        alert('Por favor, arrastra únicamente archivos con extensión .snbt');
+        showToast('Por favor, arrastra únicamente archivos con extensión .snbt', 'warning');
       }
     }
+  };
+
+  const pinSelectionToClipboard = () => {
+    if (selection.items.length === 0) return;
+
+    const selectedQuests = selection.items
+      .filter(item => item.type === 'quest')
+      .map(item => quests.find(q => q && q.id === item.id))
+      .filter(Boolean);
+
+    const selectedImages = selection.items
+      .filter(item => item.type === 'image')
+      .map(item => images[item.id as number])
+      .filter(Boolean);
+
+    if (selectedQuests.length === 0 && selectedImages.length === 0) return;
+
+    // Determinar el título descriptivo
+    let title = 'Grupo de Activos';
+    if (selectedQuests.length === 1 && selectedImages.length === 0) {
+      title = getDValue(selectedQuests[0].title) || `Misión ${selectedQuests[0].id}`;
+    } else if (selectedQuests.length === 0 && selectedImages.length === 1) {
+      title = selectedImages[0].image || 'Imagen de fondo';
+      const lastSlashIdx = title.lastIndexOf('/');
+      if (lastSlashIdx !== -1) {
+        title = title.substring(lastSlashIdx + 1);
+      }
+    } else {
+      const parts = [];
+      if (selectedQuests.length > 0) parts.push(`${selectedQuests.length} ${selectedQuests.length === 1 ? 'misión' : 'misiones'}`);
+      if (selectedImages.length > 0) parts.push(`${selectedImages.length} ${selectedImages.length === 1 ? 'imagen' : 'imágenes'}`);
+      title = `Conjunto (${parts.join(', ')})`;
+    }
+
+    const newAsset = {
+      id: Math.random().toString(36).substring(2, 11) + Date.now().toString(36),
+      title,
+      quests: JSON.parse(JSON.stringify(selectedQuests)),
+      images: JSON.parse(JSON.stringify(selectedImages)),
+      timestamp: Date.now()
+    };
+
+    savePinnedAssets([newAsset, ...pinnedAssets]);
+    showToast('¡Selección anclada al portapapeles con éxito!', 'success');
+  };
+
+  const pastePinnedAsset = (asset: any) => {
+    if (!snbtData) return;
+
+    const generateHexId = () => {
+      let id = '';
+      const chars = '0123456789ABCDEF';
+      for (let i = 0; i < 16; i++) {
+        id += chars[Math.floor(Math.random() * 16)];
+      }
+      return id;
+    };
+
+    // 1. Obtener Bounding Box
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let hasCoords = false;
+
+    asset.quests.forEach((q: any) => {
+      const qx = getDValue(q.x) ?? 0;
+      const qy = getDValue(q.y) ?? 0;
+      if (qx < minX) minX = qx;
+      if (qx > maxX) maxX = qx;
+      if (qy < minY) minY = qy;
+      if (qy > maxY) maxY = qy;
+      hasCoords = true;
+    });
+
+    asset.images.forEach((img: any) => {
+      const imgx = getDValue(img.x) ?? 0;
+      const imgy = getDValue(img.y) ?? 0;
+      if (imgx < minX) minX = imgx;
+      if (imgx > maxX) maxX = imgx;
+      if (imgy < minY) minY = imgy;
+      if (imgy > maxY) maxY = imgy;
+      hasCoords = true;
+    });
+
+    const groupCenterX = hasCoords ? (minX + maxX) / 2 : 0;
+    const groupCenterY = hasCoords ? (minY + maxY) / 2 : 0;
+
+    // 2. Búsqueda de centro de destino
+    let targetX = 0;
+    let targetY = 0;
+    if (quests.length > 0) {
+      const sumX = quests.reduce((acc, q) => acc + (getDValue(q.x) ?? 0), 0);
+      const sumY = quests.reduce((acc, q) => acc + (getDValue(q.y) ?? 0), 0);
+      targetX = sumX / quests.length;
+      targetY = sumY / quests.length;
+    }
+
+    const dx = targetX - groupCenterX;
+    const dy = targetY - groupCenterY;
+
+    // 3. Crear mapa de IDs de misiones
+    const idMap: { [key: string]: string } = {};
+    asset.quests.forEach((q: any) => {
+      const oldId = getDValue(q.id);
+      if (oldId) {
+        idMap[oldId] = generateHexId();
+      }
+    });
+
+    // 4. Copiar y desplazar misiones
+    const pastedQuests = asset.quests.map((q: any) => {
+      const qCopy = JSON.parse(JSON.stringify(q));
+      
+      // Actualizar ID de misión
+      const oldId = getDValue(q.id);
+      if (oldId && idMap[oldId]) {
+        qCopy.id = idMap[oldId];
+      }
+
+      // Aplicar desplazamiento a X
+      const curX = getDValue(qCopy.x) ?? 0;
+      qCopy.x = { __type: 'number', value: curX + dx, suffix: 'd' };
+
+      // Aplicar desplazamiento a Y
+      const curY = getDValue(qCopy.y) ?? 0;
+      qCopy.y = { __type: 'number', value: curY + dy, suffix: 'd' };
+
+      // Reindexar dependencias internas
+      if (qCopy.dependencies) {
+        if (Array.isArray(qCopy.dependencies)) {
+          qCopy.dependencies = qCopy.dependencies.map((dep: any) => {
+            const depId = typeof dep === 'object' ? dep.value : dep;
+            return idMap[depId] ? idMap[depId] : dep;
+          });
+        } else {
+          const depId = typeof qCopy.dependencies === 'object' ? qCopy.dependencies.value : qCopy.dependencies;
+          if (idMap[depId]) {
+            qCopy.dependencies = idMap[depId];
+          }
+        }
+      }
+
+      return qCopy;
+    });
+
+    // 5. Copiar y desplazar imágenes
+    const pastedImages = asset.images.map((img: any) => {
+      const imgCopy = JSON.parse(JSON.stringify(img));
+
+      // Aplicar desplazamiento a X
+      const curX = getDValue(imgCopy.x) ?? 0;
+      imgCopy.x = { __type: 'number', value: curX + dx, suffix: 'd' };
+
+      // Aplicar desplazamiento a Y
+      const curY = getDValue(imgCopy.y) ?? 0;
+      imgCopy.y = { __type: 'number', value: curY + dy, suffix: 'd' };
+
+      return imgCopy;
+    });
+
+    // 6. Actualizar el estado global con las nuevas misiones e imágenes
+    updateState([...quests, ...pastedQuests], [...images, ...pastedImages]);
+    
+    // Seleccionar automáticamente los nuevos elementos pegados para comodidad
+    const newSelectionItems: { type: 'quest' | 'image'; id: string | number }[] = [];
+    pastedQuests.forEach((q: any) => {
+      newSelectionItems.push({ type: 'quest', id: q.id });
+    });
+    const startImgIdx = images.length;
+    pastedImages.forEach((_: any, idx: number) => {
+      newSelectionItems.push({ type: 'image', id: startImgIdx + idx });
+    });
+
+    setSelection({
+      type: newSelectionItems.length === 1 ? newSelectionItems[0].type : 'mixed',
+      ids: newSelectionItems.map(item => item.id),
+      items: newSelectionItems
+    });
+
+    showToast(`¡Se ha pegado con éxito el activo "${asset.title}"!`, 'success');
   };
 
   const handleExport = () => {
@@ -1139,7 +1345,7 @@ function App() {
           </div>
         </div>
       ) : viewMode === 'map' ? (
-        <div className="canvas-container">
+        <div className="canvas-container" style={{ position: 'relative' }}>
           <EditorCanvas 
             quests={quests}
             images={images}
@@ -1151,7 +1357,94 @@ function App() {
             onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
             onQuestContextMenu={handleQuestContextMenu}
             visibleZLevels={visibleZLevels}
+            isPinnedDrawerOpen={isPinnedDrawerOpen}
+            setIsPinnedDrawerOpen={setIsPinnedDrawerOpen}
+            pinnedCount={pinnedAssets.length}
           />
+
+          {/* Cajón deslizable (Drawer) del Portapapeles */}
+          {isPinnedDrawerOpen && (
+            <div className="pinned-drawer">
+              <div className="pinned-drawer-header">
+                <h3 className="pinned-drawer-title">📌 Elementos Anclados</h3>
+                <button 
+                  className="pinned-drawer-close"
+                  onClick={() => setIsPinnedDrawerOpen(false)}
+                  title="Cerrar cajón"
+                >
+                  <Plus size={16} style={{ transform: 'rotate(45deg)' }} />
+                </button>
+              </div>
+              <div className="pinned-drawer-content">
+                {pinnedAssets.length === 0 ? (
+                  <div className="empty-state" style={{ padding: '20px 10px' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      No tienes elementos anclados.
+                    </p>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                      Haz clic derecho en el mapa o usa el panel de propiedades para anclar misiones o imágenes.
+                    </p>
+                  </div>
+                ) : (
+                  pinnedAssets.map((asset) => {
+                    let typeLabel = 'Conjunto';
+                    let typeClass = 'group';
+                    if (asset.quests.length === 1 && asset.images.length === 0) {
+                      typeLabel = 'Misión';
+                      typeClass = 'quest';
+                    } else if (asset.quests.length === 0 && asset.images.length === 1) {
+                      typeLabel = 'Imagen';
+                      typeClass = 'image';
+                    }
+
+                    return (
+                      <div key={asset.id} className="pinned-asset-card">
+                        <div className="pinned-asset-meta">
+                          <span className={`pinned-asset-type-badge ${typeClass}`}>
+                            {typeLabel}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                            {new Date(asset.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <h4 className="pinned-asset-name">{asset.title}</h4>
+                        {asset.quests.length > 0 && asset.quests.map((q: any) => (
+                          <p key={q.id} className="pinned-asset-detail">
+                            🔹 Misión: {getDValue(q.title) || q.id}
+                          </p>
+                        ))}
+                        {asset.images.length > 0 && asset.images.map((img: any, idx: number) => (
+                          <p key={idx} className="pinned-asset-detail">
+                            🖼️ Imagen: {img.image ? img.image.substring(img.image.lastIndexOf('/') + 1) : 'Decoración'}
+                          </p>
+                        ))}
+                        
+                        <div className="pinned-asset-actions">
+                          <button 
+                            className="pinned-asset-btn-paste"
+                            onClick={() => pastePinnedAsset(asset)}
+                            title="Pegar este activo en el centro del mapa"
+                          >
+                            📋 Pegar
+                          </button>
+                          <button 
+                            className="pinned-asset-btn-delete"
+                            onClick={() => {
+                              const nextAssets = pinnedAssets.filter((a) => a.id !== asset.id);
+                              savePinnedAssets(nextAssets);
+                            }}
+                            title="Desanclar elemento"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <TableView 
@@ -1463,6 +1756,13 @@ function App() {
               })()}
 
               <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', borderRadius: '6px', padding: '10px', fontSize: '0.8rem', marginBottom: '8px' }} 
+                  onClick={pinSelectionToClipboard}
+                >
+                  📌 Anclar Selección al Portapapeles
+                </button>
                 {selection.items.some(item => item.type === 'image') && (
                   <button 
                     className="btn-icon" 
@@ -1739,7 +2039,14 @@ function App() {
               </div>
               
               {/* Delete Image Section */}
-              <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                  onClick={pinSelectionToClipboard}
+                >
+                  📌 Anclar al Portapapeles
+                </button>
                 <button 
                   className="btn-icon" 
                   style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px' }} 
@@ -2272,7 +2579,14 @@ function App() {
                 </div>
 
                 {/* Delete Quest Section */}
-                <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ marginTop: '30px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button 
+                    className="btn btn-primary" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                    onClick={pinSelectionToClipboard}
+                  >
+                    📌 Anclar al Portapapeles
+                  </button>
                   <button className="btn-icon" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px' }} onClick={() => deleteQuest(selection.id as string)}>
                     <Trash2 size={16} /> Eliminar Misión
                   </button>
@@ -2311,7 +2625,7 @@ function App() {
                 nbtEditor.onSave(parsed);
                 setNbtEditor(null);
               } catch (e: any) {
-                alert('Error al parsear JSON: ' + e.message);
+                showToast('Error al parsear JSON: ' + e.message, 'warning');
               }
             }}>Guardar NBT</button>
           </div>
@@ -2350,6 +2664,16 @@ function App() {
         >
           <span>🔓</span> Quitar dependencias seleccionadas de esta
         </div>
+        <div className="context-menu-divider" />
+        <div 
+          className="context-menu-item"
+          onClick={() => {
+            pinSelectionToClipboard();
+            setContextMenu({ ...contextMenu, visible: false });
+          }}
+        >
+          <span>📌</span> Anclar Selección al Portapapeles
+        </div>
       </div>
     )}
 
@@ -2364,6 +2688,18 @@ function App() {
         </div>
       </div>
     )}
+
+    {/* Contenedor de Notificaciones Toast/Growl */}
+    <div className="toast-container">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast-item ${t.type}`}>
+          <span className="toast-icon">
+            {t.type === 'success' ? '✅' : t.type === 'warning' ? '⚠️' : 'ℹ️'}
+          </span>
+          <p className="toast-message">{t.message}</p>
+        </div>
+      ))}
+    </div>
     </>
     </ErrorBoundary>
   );
