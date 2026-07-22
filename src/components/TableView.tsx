@@ -245,6 +245,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
               <tr>
                 <th>ID</th>
                 <th>Título</th>
+                <th>Icono</th>
                 <th>X</th>
                 <th>Y</th>
                 <th>Tamaño</th>
@@ -297,6 +298,30 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       onChange={(e) => updateQuest(q.id, { title: e.target.value })}
                       placeholder="Sin título"
                     />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input 
+                        type="text" 
+                        className="table-input"
+                        value={q.icon || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateQuest(q.id, { icon: val ? val : undefined });
+                        }}
+                        placeholder="Ej: minecraft:apple"
+                      />
+                      {q.icon && (
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '4px', color: 'var(--text-secondary)' }}
+                          onClick={() => updateQuest(q.id, { icon: undefined })}
+                          title="Quitar icono"
+                        >
+                          <span style={{ fontSize: '1rem', lineHeight: '1', fontWeight: 'bold' }}>×</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <input 
@@ -367,7 +392,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
               ))}
               {filteredQuests.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                     No se encontraron misiones que coincidan con la búsqueda.
                   </td>
                 </tr>

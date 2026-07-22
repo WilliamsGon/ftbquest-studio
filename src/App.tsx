@@ -729,6 +729,61 @@ function App() {
     showToast(`¡Se ha pegado con éxito el activo "${asset.title}"!`, 'success');
   };
 
+  const clearSelectedDependencies = () => {
+    const selectedQuestIds = selection.items
+      .filter(item => item.type === 'quest')
+      .map(item => item.id as string);
+
+    if (selectedQuestIds.length === 0) return;
+
+    const newQuests = quests.map(q => {
+      let isModified = false;
+      const qCopy = { ...q };
+
+      // Eliminar dependencias salientes si es una misión seleccionada
+      if (selectedQuestIds.includes(q.id)) {
+        if (qCopy.dependencies !== undefined) {
+          delete qCopy.dependencies;
+          isModified = true;
+        }
+        if (qCopy.dependency !== undefined) {
+          delete qCopy.dependency;
+          isModified = true;
+        }
+      }
+
+      // Eliminar dependencias entrantes que coincidan con las misiones seleccionadas
+      if (qCopy.dependencies) {
+        if (Array.isArray(qCopy.dependencies)) {
+          const filtered = qCopy.dependencies.filter((dep: any) => {
+            const depId = typeof dep === 'object' ? dep.value : dep;
+            return !selectedQuestIds.includes(depId);
+          });
+          if (filtered.length !== qCopy.dependencies.length) {
+            qCopy.dependencies = filtered.length > 0 ? filtered : undefined;
+            isModified = true;
+          }
+        } else {
+          const depId = typeof qCopy.dependencies === 'object' ? qCopy.dependencies.value : qCopy.dependencies;
+          if (selectedQuestIds.includes(depId)) {
+            qCopy.dependencies = undefined;
+            isModified = true;
+          }
+        }
+      }
+
+      // Limpieza final de campos vacíos
+      if (qCopy.dependencies === undefined) {
+        delete qCopy.dependencies;
+      }
+
+      return isModified ? qCopy : q;
+    });
+
+    updateState(newQuests, images);
+    showToast(`Dependencias eliminadas para ${selectedQuestIds.length} misión(es).`, 'success');
+  };
+
   const handleExport = () => {
     if (!snbtData) return;
     const newData = { ...snbtData };
@@ -1763,6 +1818,16 @@ function App() {
                 >
                   📌 Anclar Selección al Portapapeles
                 </button>
+                {selection.items.some(item => item.type === 'quest') && (
+                  <button 
+                    className="btn-icon" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 179, 71, 0.15)', color: '#ffb347', border: '1px solid rgba(255, 179, 71, 0.25)', borderRadius: '6px', padding: '10px', fontSize: '0.8rem', marginBottom: '8px' }} 
+                    onClick={clearSelectedDependencies}
+                    title="Borra todas las dependencias de ida y vuelta para las misiones seleccionadas"
+                  >
+                    <span>🔓</span> Quitar todas las dependencias
+                  </button>
+                )}
                 {selection.items.some(item => item.type === 'image') && (
                   <button 
                     className="btn-icon" 
@@ -2586,6 +2651,14 @@ function App() {
                     onClick={pinSelectionToClipboard}
                   >
                     📌 Anclar al Portapapeles
+                  </button>
+                  <button 
+                    className="btn-icon" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 179, 71, 0.15)', color: '#ffb347', border: '1px solid rgba(255, 179, 71, 0.25)', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                    onClick={clearSelectedDependencies}
+                    title="Borra todas las dependencias de ida y vuelta para esta misión"
+                  >
+                    <span>🔓</span> Quitar todas las dependencias
                   </button>
                   <button className="btn-icon" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px' }} onClick={() => deleteQuest(selection.id as string)}>
                     <Trash2 size={16} /> Eliminar Misión
