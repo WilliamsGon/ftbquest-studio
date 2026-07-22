@@ -21,6 +21,7 @@ interface CanvasProps {
   }) => void;
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
+  updateQuestsAndImages?: (questUpdatesList: any[], imageUpdatesList: any[]) => void;
   onPointerPosChange?: (pos: { x: number; y: number } | null) => void;
   onQuestContextMenu?: (questId: string, clientX: number, clientY: number) => void;
   visibleZLevels: number[];
@@ -151,6 +152,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   setSelection, 
   updateQuest, 
   updateImage, 
+  updateQuestsAndImages,
   onPointerPosChange, 
   onQuestContextMenu, 
   visibleZLevels,
@@ -672,8 +674,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                               };
                             });
                             
-                          if (imageUpdates.length > 0) updateImage(imageUpdates);
-                          if (questUpdates.length > 0) updateQuest(questUpdates);
+                          if (updateQuestsAndImages) {
+                            updateQuestsAndImages(questUpdates, imageUpdates);
+                          } else {
+                            if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            if (questUpdates.length > 0) updateQuest(questUpdates);
+                          }
                         } else {
                           // Comportamiento para imágenes múltiples sin misiones en la selección
                           const selectedImages = selection.items.filter(item => item.type === 'image');
@@ -971,8 +977,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                             };
                           });
 
-                        if (questUpdates.length > 0) updateQuest(questUpdates);
-                        if (imageUpdates.length > 0) updateImage(imageUpdates);
+                        if (updateQuestsAndImages) {
+                          updateQuestsAndImages(questUpdates, imageUpdates);
+                        } else {
+                          if (questUpdates.length > 0) updateQuest(questUpdates);
+                          if (imageUpdates.length > 0) updateImage(imageUpdates);
+                        }
                       } else {
                         // Arrastre individual de misión
                         let newX = e.target.x() / SCALE_FACTOR;

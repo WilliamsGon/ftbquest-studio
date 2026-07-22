@@ -1079,6 +1079,51 @@ function App() {
     updateState(quests, newImages);
   };
 
+  const updateQuestsAndImages = (
+    questUpdatesList: { id: string; updates: any }[],
+    imageUpdatesList: { index: number; updates: any }[]
+  ) => {
+    let nextQuests = quests;
+    if (questUpdatesList && questUpdatesList.length > 0) {
+      nextQuests = quests.map(q => {
+        const found = questUpdatesList.find(u => u.id === q.id);
+        if (found) {
+          const u = found.updates;
+          const updatedObj: any = {
+            ...q,
+            ...u,
+            x: u.x !== undefined ? (typeof u.x === 'object' && u.x !== null ? u.x : { __type: 'number', value: u.x, suffix: 'd' }) : q.x,
+            y: u.y !== undefined ? (typeof u.y === 'object' && u.y !== null ? u.y : { __type: 'number', value: u.y, suffix: 'd' }) : q.y,
+          };
+          Object.keys(updatedObj).forEach(key => {
+            if (updatedObj[key] === undefined) delete updatedObj[key];
+          });
+          return updatedObj;
+        }
+        return q;
+      });
+    }
+
+    let nextImages = JSON.parse(JSON.stringify(images));
+    if (imageUpdatesList && imageUpdatesList.length > 0) {
+      imageUpdatesList.forEach(({ index, updates: u }) => {
+        if (nextImages[index]) {
+          if (u.x !== undefined) nextImages[index].x = { __type: 'number', value: u.x, suffix: 'd' };
+          if (u.y !== undefined) nextImages[index].y = { __type: 'number', value: u.y, suffix: 'd' };
+          if (u.width !== undefined) nextImages[index].width = { __type: 'number', value: u.width, suffix: 'd' };
+          if (u.height !== undefined) nextImages[index].height = { __type: 'number', value: u.height, suffix: 'd' };
+          if (u.rotation !== undefined) nextImages[index].rotation = { __type: 'number', value: u.rotation, suffix: 'd' };
+          if (u.alpha !== undefined) nextImages[index].alpha = { __type: 'number', value: u.alpha, suffix: '' };
+          if (u.order !== undefined) nextImages[index].order = { __type: 'number', value: u.order, suffix: '' };
+          if (u.image !== undefined) nextImages[index].image = u.image;
+          if (u.color !== undefined) nextImages[index].color = u.color;
+        }
+      });
+    }
+
+    updateState(nextQuests, nextImages);
+  };
+
   const alignSelectedItems = (alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
     if (selection.items.length <= 1) return;
 
@@ -1409,6 +1454,7 @@ function App() {
             setSelection={setSelection}
             updateQuest={updateQuest}
             updateImage={updateImage}
+            updateQuestsAndImages={updateQuestsAndImages}
             onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
             onQuestContextMenu={handleQuestContextMenu}
             visibleZLevels={visibleZLevels}
