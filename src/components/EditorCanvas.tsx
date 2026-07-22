@@ -161,6 +161,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapMode, setSnapMode] = useState<'relative' | 'absolute'>('relative');
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -305,6 +306,18 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
           <Magnet size={16} />
           Imán (Snap)
         </button>
+        {snapToGrid && (
+          <button 
+            className={`toolbar-btn ${snapMode === 'relative' ? 'active' : ''}`}
+            onClick={() => setSnapMode(snapMode === 'relative' ? 'absolute' : 'relative')}
+            title={snapMode === 'relative' 
+              ? 'Modo Relativo: Mantiene distancias e intervalos entre elementos del grupo al mover' 
+              : 'Modo Absoluto: Colapsa / centra las imágenes al punto de ancla'}
+            style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+          >
+            {snapMode === 'relative' ? '🧲 Relativo' : '🎯 Absoluto'}
+          </button>
+        )}
         <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
         <button 
           className={`toolbar-btn ${isPinnedDrawerOpen ? 'active' : ''}`}
@@ -620,31 +633,32 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                           // Si hay misión ancla, ella manda
                           const qOrigX = getDValue(anchorQuest.x);
                           const qOrigY = getDValue(anchorQuest.y);
-                          
-                          let qFinalX = qOrigX + deltaX;
-                          let qFinalY = qOrigY + deltaY;
-                          
+                          const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+                          const snapStep = sizeVal / 2;
+
                           if (snapToGrid) {
-                            const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
-                            const snapStep = sizeVal / 2;
-                            qFinalX = Math.round(qFinalX / snapStep) * snapStep;
-                            qFinalY = Math.round(qFinalY / snapStep) * snapStep;
+                            deltaX = Math.round(deltaX / snapStep) * snapStep;
+                            deltaY = Math.round(deltaY / snapStep) * snapStep;
                           }
+
+                          const qFinalX = qOrigX + deltaX;
+                          const qFinalY = qOrigY + deltaY;
                           
                           // Actualizar quests seleccionadas relativamente
                           const questUpdates = selection.items
                             .filter(item => item.type === 'quest')
                             .map(item => {
                               const qObj = quests.find(q => q.id === item.id);
-                              const newQx = item.id === anchorQuest.id ? qFinalX : getDValue(qObj.x) + (qFinalX - qOrigX);
-                              const newQy = item.id === anchorQuest.id ? qFinalY : getDValue(qObj.y) + (qFinalY - qOrigY);
                               return {
                                 id: item.id as string,
-                                updates: { x: newQx, y: newQy }
+                                updates: {
+                                  x: getDValue(qObj.x) + deltaX,
+                                  y: getDValue(qObj.y) + deltaY
+                                }
                               };
                             });
                           
-                          // A todas las imágenes seleccionadas les asignamos exactamente la misma posición final de la misión ancla si snapToGrid está activo. Si no, las movemos relativamente.
+                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
                           const imageUpdates = selection.items
                             .filter(item => item.type === 'image')
                             .map(item => {
@@ -652,8 +666,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                               return {
                                 index: item.id as number,
                                 updates: {
-                                  x: snapToGrid ? qFinalX : getDValue(imgObj.x) + deltaX,
-                                  y: snapToGrid ? qFinalY : getDValue(imgObj.y) + deltaY
+                                  x: isAbsoluteSnap ? qFinalX : getDValue(imgObj.x) + deltaX,
+                                  y: isAbsoluteSnap ? qFinalY : getDValue(imgObj.y) + deltaY
                                 }
                               };
                             });
@@ -663,8 +677,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         } else {
                           // Comportamiento para imágenes múltiples sin misiones en la selección
                           const selectedImages = selection.items.filter(item => item.type === 'image');
+                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
                           
-                          if (snapToGrid && selectedImages.length > 0) {
+                          if (isAbsoluteSnap && selectedImages.length > 0) {
                             // Buscar la imagen seleccionada con el mayor número de orden (order o z-index)
                             let maxOrder = -Infinity;
                             let maxOrderImgObj: any = null;
@@ -680,14 +695,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                               }
                             });
 
-                            // Si encontramos un líder de orden máximo
                             if (maxOrderImgObj) {
                               const leaderOrigX = getDValue(maxOrderImgObj.x);
                               const leaderOrigY = getDValue(maxOrderImgObj.y);
                               const leaderFinalX = Math.round((leaderOrigX + deltaX) / 0.5) * 0.5;
                               const leaderFinalY = Math.round((leaderOrigY + deltaY) / 0.5) * 0.5;
 
-                              // Todas las imágenes toman exactamente la coordenada final de este líder
                               const imageUpdates = selectedImages.map(item => {
                                 return {
                                   index: item.id as number,
@@ -699,31 +712,22 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                               });
 
                               if (imageUpdates.length > 0) updateImage(imageUpdates);
-                            } else {
-                              // Fallback de seguridad si no hay orden
-                              const snappedDeltaX = Math.round(deltaX / 0.5) * 0.5;
-                              const snappedDeltaY = Math.round(deltaY / 0.5) * 0.5;
-                              const imageUpdates = selectedImages.map(item => {
-                                const imgObj = images[item.id as number];
-                                return {
-                                  index: item.id as number,
-                                  updates: {
-                                    x: getDValue(imgObj.x) + snappedDeltaX,
-                                    y: getDValue(imgObj.y) + snappedDeltaY
-                                  }
-                                };
-                              });
-                              if (imageUpdates.length > 0) updateImage(imageUpdates);
                             }
                           } else {
-                            // Si snapToGrid está inactivo o no hay imágenes seleccionadas
+                            // Modo Relativo o Snap desactivado: mover todas las imágenes conservando sus distancias e intervalos
+                            let finalDeltaX = deltaX;
+                            let finalDeltaY = deltaY;
+                            if (snapToGrid) {
+                              finalDeltaX = Math.round(deltaX / 0.5) * 0.5;
+                              finalDeltaY = Math.round(deltaY / 0.5) * 0.5;
+                            }
                             const imageUpdates = selectedImages.map(item => {
                               const imgObj = images[item.id as number];
                               return {
                                 index: item.id as number,
                                 updates: {
-                                  x: getDValue(imgObj.x) + deltaX,
-                                  y: getDValue(imgObj.y) + deltaY
+                                  x: getDValue(imgObj.x) + finalDeltaX,
+                                  y: getDValue(imgObj.y) + finalDeltaY
                                 }
                               };
                             });
@@ -953,7 +957,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                             };
                           });
                         
-                        // A todas las imágenes seleccionadas les asignamos exactamente la misma posición final de la misión arrastrada si snapToGrid está activo. Si no, las movemos relativamente.
+                        const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
                         const imageUpdates = selection.items
                           .filter(item => item.type === 'image')
                           .map(item => {
@@ -961,8 +965,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                             return {
                               index: item.id as number,
                               updates: {
-                                x: snapToGrid ? qFinalX : getDValue(imgObj.x) + deltaX,
-                                y: snapToGrid ? qFinalY : getDValue(imgObj.y) + deltaY
+                                x: isAbsoluteSnap ? qFinalX : getDValue(imgObj.x) + deltaX,
+                                y: isAbsoluteSnap ? qFinalY : getDValue(imgObj.y) + deltaY
                               }
                             };
                           });
