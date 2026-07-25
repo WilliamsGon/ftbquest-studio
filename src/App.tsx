@@ -235,6 +235,10 @@ function App() {
     clipboardRef.current = clipboard;
   }, [clipboard]);
 
+  // Estados para Imán (Snap) del EditorCanvas
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapMode, setSnapMode] = useState<'relative' | 'absolute'>('relative');
+
   const selection = {
     type: rawSelection.type,
     ids: rawSelection.ids,
@@ -388,19 +392,48 @@ function App() {
 
     const mousePos = mouseCanvasPosRef.current;
 
+    let rawDx = 0.5;
+    let rawDy = 0.5;
+    if (mousePos !== null) {
+      rawDx = mousePos.x - groupCenterX;
+      rawDy = mousePos.y - groupCenterY;
+    }
+
+    let dx = rawDx;
+    let dy = rawDy;
+
+    if (snapToGrid) {
+      const anchorItem = clip.find(item => item.type === 'quest') || clip[0];
+      let snapStep = 0.5;
+      if (anchorItem && anchorItem.type === 'quest') {
+        const sizeVal = anchorItem.data.size?.value ?? anchorItem.data.size ?? 1.0;
+        snapStep = sizeVal / 2;
+      }
+      if (anchorItem) {
+        const anchorOrigX = anchorItem.data.x?.value ?? anchorItem.data.x ?? 0;
+        const anchorOrigY = anchorItem.data.y?.value ?? anchorItem.data.y ?? 0;
+        const anchorTentX = anchorOrigX + rawDx;
+        const anchorTentY = anchorOrigY + rawDy;
+        const anchorSnappedX = Math.round(anchorTentX / snapStep) * snapStep;
+        const anchorSnappedY = Math.round(anchorTentY / snapStep) * snapStep;
+        dx = anchorSnappedX - anchorOrigX;
+        dy = anchorSnappedY - anchorOrigY;
+      } else {
+        dx = Math.round(rawDx / 0.5) * 0.5;
+        dy = Math.round(rawDy / 0.5) * 0.5;
+      }
+    }
+
     clip.forEach(item => {
       const origX = item.data.x?.value ?? item.data.x ?? 0;
       const origY = item.data.y?.value ?? item.data.y ?? 0;
 
-      let targetX = origX + 0.5;
-      let targetY = origY + 0.5;
+      let targetX = origX + dx;
+      let targetY = origY + dy;
 
-      if (mousePos !== null) {
-        // Calcular offset respecto al centro del grupo y colocarlo en el puntero del mouse
-        const offsetX = origX - groupCenterX;
-        const offsetY = origY - groupCenterY;
-        targetX = mousePos.x + offsetX;
-        targetY = mousePos.y + offsetY;
+      if (snapToGrid) {
+        targetX = Math.round(targetX * 10000) / 10000;
+        targetY = Math.round(targetY * 10000) / 10000;
       }
 
       if (item.type === 'image') {
@@ -647,6 +680,33 @@ function App() {
     const dx = targetX - groupCenterX;
     const dy = targetY - groupCenterY;
 
+    let finalDx = dx;
+    let finalDy = dy;
+
+    if (snapToGrid) {
+      const anchorQuest = asset.quests && asset.quests.length > 0 ? asset.quests[0] : null;
+      const anchorImage = !anchorQuest && asset.images && asset.images.length > 0 ? asset.images[0] : null;
+      const anchorItem = anchorQuest || anchorImage;
+      let snapStep = 0.5;
+      if (anchorQuest) {
+        const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+        snapStep = sizeVal / 2;
+      }
+      if (anchorItem) {
+        const anchorOrigX = getDValue(anchorItem.x) ?? 0;
+        const anchorOrigY = getDValue(anchorItem.y) ?? 0;
+        const anchorTentX = anchorOrigX + dx;
+        const anchorTentY = anchorOrigY + dy;
+        const anchorSnappedX = Math.round(anchorTentX / snapStep) * snapStep;
+        const anchorSnappedY = Math.round(anchorTentY / snapStep) * snapStep;
+        finalDx = anchorSnappedX - anchorOrigX;
+        finalDy = anchorSnappedY - anchorOrigY;
+      } else {
+        finalDx = Math.round(dx / 0.5) * 0.5;
+        finalDy = Math.round(dy / 0.5) * 0.5;
+      }
+    }
+
     // 3. Crear mapa de IDs de misiones
     const idMap: { [key: string]: string } = {};
     asset.quests.forEach((q: any) => {
@@ -668,11 +728,16 @@ function App() {
 
       // Aplicar desplazamiento a X
       const curX = getDValue(qCopy.x) ?? 0;
-      qCopy.x = { __type: 'number', value: curX + dx, suffix: 'd' };
-
+      let newX = curX + finalDx;
       // Aplicar desplazamiento a Y
       const curY = getDValue(qCopy.y) ?? 0;
-      qCopy.y = { __type: 'number', value: curY + dy, suffix: 'd' };
+      let newY = curY + finalDy;
+      if (snapToGrid) {
+        newX = Math.round(newX * 10000) / 10000;
+        newY = Math.round(newY * 10000) / 10000;
+      }
+      qCopy.x = { __type: 'number', value: newX, suffix: 'd' };
+      qCopy.y = { __type: 'number', value: newY, suffix: 'd' };
 
       // Reindexar dependencias internas
       if (qCopy.dependencies) {
@@ -698,11 +763,16 @@ function App() {
 
       // Aplicar desplazamiento a X
       const curX = getDValue(imgCopy.x) ?? 0;
-      imgCopy.x = { __type: 'number', value: curX + dx, suffix: 'd' };
-
+      let newX = curX + finalDx;
       // Aplicar desplazamiento a Y
       const curY = getDValue(imgCopy.y) ?? 0;
-      imgCopy.y = { __type: 'number', value: curY + dy, suffix: 'd' };
+      let newY = curY + finalDy;
+      if (snapToGrid) {
+        newX = Math.round(newX * 10000) / 10000;
+        newY = Math.round(newY * 10000) / 10000;
+      }
+      imgCopy.x = { __type: 'number', value: newX, suffix: 'd' };
+      imgCopy.y = { __type: 'number', value: newY, suffix: 'd' };
 
       return imgCopy;
     });
@@ -1461,6 +1531,10 @@ function App() {
             isPinnedDrawerOpen={isPinnedDrawerOpen}
             setIsPinnedDrawerOpen={setIsPinnedDrawerOpen}
             pinnedCount={pinnedAssets.length}
+            snapToGrid={snapToGrid}
+            setSnapToGrid={setSnapToGrid}
+            snapMode={snapMode}
+            setSnapMode={setSnapMode}
           />
 
           {/* Cajón deslizable (Drawer) del Portapapeles */}

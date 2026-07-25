@@ -28,6 +28,10 @@ interface CanvasProps {
   isPinnedDrawerOpen: boolean;
   setIsPinnedDrawerOpen: (open: boolean) => void;
   pinnedCount: number;
+  snapToGrid?: boolean;
+  setSnapToGrid?: (snap: boolean) => void;
+  snapMode?: 'relative' | 'absolute';
+  setSnapMode?: (mode: 'relative' | 'absolute') => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -158,12 +162,20 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   visibleZLevels,
   isPinnedDrawerOpen,
   setIsPinnedDrawerOpen,
-  pinnedCount
+  pinnedCount,
+  snapToGrid: propSnapToGrid,
+  setSnapToGrid: propSetSnapToGrid,
+  snapMode: propSnapMode,
+  setSnapMode: propSetSnapMode
 }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
-  const [snapToGrid, setSnapToGrid] = useState(true);
-  const [snapMode, setSnapMode] = useState<'relative' | 'absolute'>('relative');
+  const [localSnapToGrid, setLocalSnapToGrid] = useState(true);
+  const [localSnapMode, setLocalSnapMode] = useState<'relative' | 'absolute'>('relative');
+  const snapToGrid = propSnapToGrid !== undefined ? propSnapToGrid : localSnapToGrid;
+  const setSnapToGrid = propSetSnapToGrid || setLocalSnapToGrid;
+  const snapMode = propSnapMode !== undefined ? propSnapMode : localSnapMode;
+  const setSnapMode = propSetSnapMode || setLocalSnapMode;
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
