@@ -9,10 +9,129 @@ interface TableViewProps {
   onOpenNbtEditor?: (title: string, value: any, onSave: (val: any) => void) => void;
 }
 
+const defaultColumnWidths: { [key: string]: number } = {
+  // Quests
+  'quests-id': 180,
+  'quests-title': 220,
+  'quests-icon': 200,
+  'quests-x': 80,
+  'quests-y': 80,
+  'quests-size': 90,
+  'quests-shape': 120,
+  'quests-hide_deps': 130,
+  'quests-actions': 90,
+
+  // Tasks
+  'tasks-parent': 180,
+  'tasks-id': 170,
+  'tasks-type': 120,
+  'tasks-item': 260,
+  'tasks-count': 110,
+  'tasks-consume': 140,
+  'tasks-actions': 90,
+
+  // Rewards
+  'rewards-parent': 180,
+  'rewards-id': 170,
+  'rewards-type': 130,
+  'rewards-item': 260,
+  'rewards-count': 110,
+  'rewards-bonus': 120,
+  'rewards-auto': 140,
+  'rewards-team': 140,
+  'rewards-op': 140,
+  'rewards-ignore_block': 140,
+  'rewards-claim_all': 140,
+  'rewards-silent': 140,
+  'rewards-only_one': 140,
+  'rewards-title': 160,
+  'rewards-icon': 160,
+  'rewards-actions': 90
+};
+
 export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpenNbtEditor }) => {
   const [subTab, setSubTab] = useState<'quests' | 'tasks' | 'rewards'>('quests');
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Ancho de columnas redimensionables
+  const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>(() => {
+    try {
+      const saved = localStorage.getItem('ftb_table_col_widths');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [resizingCol, setResizingCol] = useState<string | null>(null);
+
+  const getColWidth = (colKey: string) => {
+    return columnWidths[colKey] || defaultColumnWidths[colKey] || undefined;
+  };
+
+  const handleResizeStart = (e: React.MouseEvent, colKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const currentWidth = columnWidths[colKey] || defaultColumnWidths[colKey] || 150;
+    setResizingCol(colKey);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(50, currentWidth + deltaX);
+      setColumnWidths(prev => {
+        const next = { ...prev, [colKey]: newWidth };
+        try {
+          localStorage.setItem('ftb_table_col_widths', JSON.stringify(next));
+        } catch (err) {}
+        return next;
+      });
+    };
+
+    const onMouseUp = () => {
+      setResizingCol(null);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleResetWidth = (colKey: string) => {
+    setColumnWidths(prev => {
+      const next = { ...prev };
+      delete next[colKey];
+      try {
+        localStorage.setItem('ftb_table_col_widths', JSON.stringify(next));
+      } catch (err) {}
+      return next;
+    });
+  };
+
+  const renderHeader = (colKey: string, children: React.ReactNode, style?: React.CSSProperties) => {
+    const w = getColWidth(colKey);
+    return (
+      <th 
+        style={{ 
+          width: w ? `${w}px` : undefined, 
+          minWidth: w ? `${w}px` : undefined,
+          position: 'relative',
+          ...style 
+        }}
+      >
+        {children}
+        <div 
+          className={`column-resize-handle ${resizingCol === colKey ? 'active' : ''}`}
+          onMouseDown={(e) => handleResizeStart(e, colKey)}
+          onDoubleClick={() => handleResetWidth(colKey)}
+          title="Arrastrar para cambiar ancho / Doble clic para restablecer"
+        />
+      </th>
+    );
+  };
+
 
   // Helper para obtener el valor plano de SNBT
   const getDValue = (val: any) => {
@@ -154,6 +273,55 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     }
   };
 
+  const handleUpdateRewardProperty = (questId: string, rewardIndex: number, propName: string, val: any) => {
+    const quest = quests.find(q => q.id === questId);
+    if (!quest) return;
+    const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+    const updatedReward = { ...rewardsArray[rewardIndex] };
+    if (val === 'default' || val === undefined || (typeof val === 'string' && val.trim() === '')) {
+      delete updatedReward[propName];
+    } else {
+      updatedReward[propName] = val;
+    }
+    rewardsArray[rewardIndex] = updatedReward;
+    updateQuest(questId, { rewards: rewardsArray });
+  };
+
+  const handleRewardsBulkUpdate = (propName: string, val: any) => {
+    const rewardsByQuest: { [questId: string]: number[] } = {};
+    filteredRewards.forEach(r => {
+      if (!rewardsByQuest[r.questId]) {
+        rewardsByQuest[r.questId] = [];
+      }
+      rewardsByQuest[r.questId].push(r.rewardIndex);
+    });
+
+    const updatesList = Object.keys(rewardsByQuest).map(qId => {
+      const quest = quests.find(q => q.id === qId);
+      if (!quest) return null;
+      const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+      
+      rewardsByQuest[qId].forEach(idx => {
+        const reward = { ...rewardsArray[idx] };
+        if (val === 'default' || val === undefined || (typeof val === 'string' && val.trim() === '')) {
+          delete reward[propName];
+        } else {
+          reward[propName] = val;
+        }
+        rewardsArray[idx] = reward;
+      });
+
+      return {
+        id: qId,
+        updates: { rewards: rewardsArray }
+      };
+    }).filter(item => item !== null) as { id: string; updates: any }[];
+
+    if (updatesList.length > 0) {
+      updateQuest(updatesList);
+    }
+  };
+
   // --- 6. LÓGICA DE MARCAR TODOS (BULK CHECKBOX TOGGLE) ---
   const handleQuestsBulkToggle = (val: string) => {
     const nextVal = val === 'default' ? undefined : (val === 'true');
@@ -243,14 +411,14 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Título</th>
-                <th>Icono</th>
-                <th>X</th>
-                <th>Y</th>
-                <th>Tamaño</th>
-                <th>Forma (Shape)</th>
-                <th style={{ textAlign: 'center' }}>
+                {renderHeader('quests-id', 'ID')}
+                {renderHeader('quests-title', 'Título')}
+                {renderHeader('quests-icon', 'Icono')}
+                {renderHeader('quests-x', 'X')}
+                {renderHeader('quests-y', 'Y')}
+                {renderHeader('quests-size', 'Tamaño')}
+                {renderHeader('quests-shape', 'Forma (Shape)')}
+                {renderHeader('quests-hide_deps', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Ocultar Deps</span>
                     <select 
@@ -270,8 +438,8 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                </th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
+                ), { textAlign: 'center' })}
+                {renderHeader('quests-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
@@ -405,12 +573,12 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                <th>Misión Padre</th>
-                <th>ID Tarea</th>
-                <th>Tipo</th>
-                <th>Ítem / Target</th>
-                <th>Cantidad</th>
-                <th style={{ textAlign: 'center' }}>
+                {renderHeader('tasks-parent', 'Misión Padre')}
+                {renderHeader('tasks-id', 'ID Tarea')}
+                {renderHeader('tasks-type', 'Tipo')}
+                {renderHeader('tasks-item', 'Ítem / Target')}
+                {renderHeader('tasks-count', 'Cantidad')}
+                {renderHeader('tasks-consume', (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <input 
                       type="checkbox" 
@@ -421,8 +589,8 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                     />
                     <span>Consumir Ítems</span>
                   </div>
-                </th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
+                ), { textAlign: 'center' })}
+                {renderHeader('tasks-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
@@ -628,12 +796,143 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                <th>Misión Padre</th>
-                <th>ID Recompensa</th>
-                <th>Tipo</th>
-                <th>Ítem / Comando</th>
-                <th>Cantidad</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Acciones</th>
+                {renderHeader('rewards-parent', 'Misión Padre')}
+                {renderHeader('rewards-id', 'ID Recompensa')}
+                {renderHeader('rewards-type', 'Tipo')}
+                {renderHeader('rewards-item', 'Ítem / Comando / Tabla')}
+                {renderHeader('rewards-count', 'Cantidad')}
+                {renderHeader('rewards-bonus', 'Bono Aleatorio', { textAlign: 'center' })}
+                {renderHeader('rewards-auto', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Auto-Claim</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('auto', e.target.value);
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="enabled">Enabled</option>
+                      <option value="disabled">Disabled</option>
+                      <option value="invisible">Invisible</option>
+                      <option value="no_toast">No Toast</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-team', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Por Equipo</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('team_reward', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (Equipo)</option>
+                      <option value="false">No (Individual)</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-op', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Permisos OP</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('elevate_perms', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (OP)</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-ignore_block', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Ignorar Bloqueo</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('ignore_reward_blocking', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-claim_all', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Excluir Claim All</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('exclude_from_claim_all', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-silent', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Silencioso</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('silent', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-only_one', (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>Sólo Uno</span>
+                    <select 
+                      className="table-select"
+                      style={{ width: '110px', fontSize: '0.72rem', padding: '2px 4px', height: '24px' }}
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleRewardsBulkUpdate('only_one', e.target.value === 'default' ? 'default' : e.target.value === 'true');
+                      }}
+                    >
+                      <option value="">Definir todos...</option>
+                      <option value="default">Por Defecto</option>
+                      <option value="true">Sí (True)</option>
+                      <option value="false">No (False)</option>
+                    </select>
+                  </div>
+                ), { textAlign: 'center' })}
+                {renderHeader('rewards-title', 'Título Custom')}
+                {renderHeader('rewards-icon', 'Ícono Custom')}
+                {renderHeader('rewards-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
@@ -691,75 +990,42 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                         <option value="xp_levels">XP Levels</option>
                         <option value="item">Item</option>
                         <option value="command">Command</option>
+                        <option value="choice">Choice</option>
+                        <option value="random">Random</option>
+                        <option value="loot">Loot Table</option>
+                        <option value="toast">Toast</option>
+                        <option value="custom">Custom</option>
                       </select>
                     </td>
                     <td>
                       {r.rewardObj.type === 'command' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', minWidth: '220px' }}>
-                          <input 
-                            type="text" 
-                            className="table-input"
-                            value={itemVal}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (typeof r.rewardObj.command === 'object' && r.rewardObj.command !== null) {
-                                handleUpdateReward(r.questId, r.rewardIndex, { command: { ...r.rewardObj.command, value: val } });
-                              } else {
-                                handleUpdateReward(r.questId, r.rewardIndex, { command: val });
-                              }
-                            }}
-                            placeholder="/give @p ..."
-                            style={{ width: '100%' }}
-                          />
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <select 
-                              className="table-input" 
-                              style={{ padding: '2px 4px', fontSize: '0.75rem', height: '24px', flex: 1 }}
-                              value={r.rewardObj.auto || 'default'}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const quest = quests.find(q => q.id === r.questId);
-                                if (!quest) return;
-                                const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
-                                const updatedReward = { ...rewardsArray[r.rewardIndex] };
-                                if (val === 'default') {
-                                  delete updatedReward.auto;
-                                } else {
-                                  updatedReward.auto = val;
-                                }
-                                rewardsArray[r.rewardIndex] = updatedReward;
-                                updateQuest(r.questId, { rewards: rewardsArray });
-                              }}
-                            >
-                              <option value="default">Auto: Por Defecto</option>
-                              <option value="enabled">Auto: Enabled</option>
-                              <option value="disabled">Auto: Disabled</option>
-                              <option value="invisible">Auto: Invisible</option>
-                              <option value="no_toast">Auto: No Toast</option>
-                            </select>
-                            
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                              <input 
-                                type="checkbox"
-                                checked={r.rewardObj.elevate_perms || false}
-                                onChange={(e) => {
-                                  const quest = quests.find(q => q.id === r.questId);
-                                  if (!quest) return;
-                                  const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
-                                  const updatedReward = { ...rewardsArray[r.rewardIndex] };
-                                  if (e.target.checked) {
-                                    updatedReward.elevate_perms = true;
-                                  } else {
-                                    delete updatedReward.elevate_perms;
-                                  }
-                                  rewardsArray[r.rewardIndex] = updatedReward;
-                                  updateQuest(r.questId, { rewards: rewardsArray });
-                                }}
-                              />
-                              Priv.
-                            </label>
-                          </div>
-                        </div>
+                        <input 
+                          type="text" 
+                          className="table-input"
+                          value={itemVal}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (typeof r.rewardObj.command === 'object' && r.rewardObj.command !== null) {
+                              handleUpdateReward(r.questId, r.rewardIndex, { command: { ...r.rewardObj.command, value: val } });
+                            } else {
+                              handleUpdateReward(r.questId, r.rewardIndex, { command: val });
+                            }
+                          }}
+                          placeholder="/give @p ..."
+                          style={{ width: '100%' }}
+                        />
+                      ) : (r.rewardObj.type === 'choice' || r.rewardObj.type === 'random' || r.rewardObj.type === 'loot') ? (
+                        <input 
+                          type="text" 
+                          className="table-input"
+                          value={r.rewardObj.table_id || r.rewardObj.table || itemVal}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleUpdateRewardProperty(r.questId, r.rewardIndex, 'table_id', val);
+                          }}
+                          placeholder="Loot Table ID / Hex (ej. 4196188979167302596L)"
+                          style={{ width: '100%' }}
+                        />
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <input 
@@ -864,6 +1130,117 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                         />
                       )}
                     </td>
+                    <td>
+                      <input 
+                        type="number" 
+                        className="table-input"
+                        value={r.rewardObj.random_bonus !== undefined ? getDValue(r.rewardObj.random_bonus) : ''}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 'default' : (parseInt(e.target.value) || 0);
+                          handleUpdateRewardProperty(r.questId, r.rewardIndex, 'random_bonus', val === 0 ? 'default' : val);
+                        }}
+                        placeholder="Default"
+                      />
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.auto || 'default'}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'auto', e.target.value)}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="enabled">Enabled</option>
+                        <option value="disabled">Disabled</option>
+                        <option value="invisible">Invisible</option>
+                        <option value="no_toast">No Toast</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.team_reward === undefined ? 'default' : (r.rewardObj.team_reward ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'team_reward', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (Equipo)</option>
+                        <option value="false">No (Individual)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.elevate_perms === undefined ? 'default' : (r.rewardObj.elevate_perms ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'elevate_perms', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                        disabled={r.rewardObj.type !== 'command'}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (OP)</option>
+                        <option value="false">No</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.ignore_reward_blocking === undefined ? 'default' : (r.rewardObj.ignore_reward_blocking ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'ignore_reward_blocking', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (True)</option>
+                        <option value="false">No (False)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.exclude_from_claim_all === undefined ? 'default' : (r.rewardObj.exclude_from_claim_all ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'exclude_from_claim_all', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (True)</option>
+                        <option value="false">No (False)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.silent === undefined ? 'default' : (r.rewardObj.silent ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'silent', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                        disabled={r.rewardObj.type !== 'command'}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (True)</option>
+                        <option value="false">No (False)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={r.rewardObj.only_one === undefined ? 'default' : (r.rewardObj.only_one ? 'true' : 'false')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'only_one', e.target.value === 'default' ? 'default' : (e.target.value === 'true'))}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (True)</option>
+                        <option value="false">No (False)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input 
+                        type="text" 
+                        className="table-input"
+                        value={r.rewardObj.title || ''}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'title', e.target.value)}
+                        placeholder="Por Defecto"
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        type="text" 
+                        className="table-input"
+                        value={typeof r.rewardObj.icon === 'string' ? r.rewardObj.icon : (r.rewardObj.icon?.id || '')}
+                        onChange={(e) => handleUpdateRewardProperty(r.questId, r.rewardIndex, 'icon', e.target.value)}
+                        placeholder="Por Defecto"
+                      />
+                    </td>
                     <td style={{ textAlign: 'center' }}>
                       <button 
                         className="btn-icon" 
@@ -879,7 +1256,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
               })}
               {filteredRewards.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={16} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                     No se encontraron recompensas que coincidan con la búsqueda.
                   </td>
                 </tr>
