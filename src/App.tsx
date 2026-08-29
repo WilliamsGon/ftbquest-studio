@@ -1713,6 +1713,167 @@ function App() {
                 );
               })()}
 
+              {/* Propiedades comunes de Misiones masivas */}
+              {(() => {
+                const selectedQuests = selection.items.filter(item => item.type === 'quest');
+                if (selectedQuests.length === 0) return null;
+
+                const firstQuestObj = quests.find(q => q && q.id === selectedQuests[0].id);
+
+                // Icono / Imagen común
+                const firstIcon = firstQuestObj?.icon || '';
+                const shareSameIcon = selectedQuests.every(item => {
+                  const q = quests.find(qObj => qObj && qObj.id === item.id);
+                  return (q?.icon || '') === firstIcon;
+                });
+
+                // Forma (Shape) común
+                const firstShapeVal = firstQuestObj?.shape || 'default';
+                const shareSameShape = selectedQuests.every(item => {
+                  const q = quests.find(qObj => qObj && qObj.id === item.id);
+                  return (q?.shape || 'default') === firstShapeVal;
+                });
+
+                // Tamaño común
+                const firstSize = getDValue(firstQuestObj?.size) ?? 1.0;
+                const shareSameSize = selectedQuests.every(item => {
+                  const q = quests.find(qObj => qObj && qObj.id === item.id);
+                  return (getDValue(q?.size) ?? 1.0) === firstSize;
+                });
+
+                // Ocultar hasta completar dependencias común
+                const firstHideDeps = firstQuestObj?.hide_until_deps_complete;
+                const shareSameHideDeps = selectedQuests.every(item => {
+                  const q = quests.find(qObj => qObj && qObj.id === item.id);
+                  return q?.hide_until_deps_complete === firstHideDeps;
+                });
+
+                return (
+                  <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                      Propiedades de las Misiones ({selectedQuests.length})
+                    </h3>
+
+                    {/* Icono / Imagen común */}
+                    <div className="input-group" style={{ marginBottom: '10px' }}>
+                      <label>Icono / Imagen común</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="input-field" 
+                          placeholder={shareSameIcon ? "ej. minecraft:apple" : "Mixto"}
+                          value={shareSameIcon ? (firstIcon || '') : ''} 
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const updatesList = selectedQuests.map(item => ({
+                              id: item.id as string,
+                              updates: { icon: val.trim() ? val : undefined }
+                            }));
+                            updateQuest(updatesList);
+                          }}
+                        />
+                        {shareSameIcon && firstIcon && (
+                          <button 
+                            className="btn-icon" 
+                            style={{ padding: '6px', color: 'var(--text-secondary)' }}
+                            onClick={() => {
+                              const updatesList = selectedQuests.map(item => ({
+                                id: item.id as string,
+                                updates: { icon: undefined }
+                              }));
+                              updateQuest(updatesList);
+                            }}
+                            title="Quitar icono de todas las misiones seleccionadas"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      {/* Forma (Shape) Común */}
+                      <div className="input-group">
+                        <label>Forma (Shape)</label>
+                        <select 
+                          className="input-field" 
+                          value={shareSameShape ? firstShapeVal : 'mixed'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'mixed') return;
+                            const nextShape = val === 'default' ? undefined : val;
+                            const updatesList = selectedQuests.map(item => ({
+                              id: item.id as string,
+                              updates: { shape: nextShape }
+                            }));
+                            updateQuest(updatesList);
+                          }}
+                        >
+                          {!shareSameShape && <option value="mixed">-- Mixto --</option>}
+                          <option value="default">Por Defecto (Heredar)</option>
+                          <option value="circle">Circle</option>
+                          <option value="square">Square</option>
+                          <option value="rsquare">Rounded Square</option>
+                          <option value="gear">Gear</option>
+                          <option value="octagon">Octagon</option>
+                          <option value="diamond">Diamond</option>
+                          <option value="hexagon">Hexagon</option>
+                          <option value="pentagon">Pentagon</option>
+                          <option value="heart">Heart</option>
+                        </select>
+                      </div>
+
+                      {/* Tamaño Común */}
+                      <div className="input-group">
+                        <label>Tamaño (Size)</label>
+                        <input 
+                          type="number" 
+                          step="0.5" 
+                          className="input-field" 
+                          placeholder={shareSameSize ? "" : "Mixto"}
+                          value={shareSameSize ? firstSize : ''} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) {
+                              const updatesList = selectedQuests.map(item => ({
+                                id: item.id as string,
+                                updates: { size: { __type: 'number', value: val, suffix: 'd' } }
+                              }));
+                              updateQuest(updatesList);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Ocultar hasta completar dependencias Común */}
+                    <div className="input-group" style={{ marginTop: '10px' }}>
+                      <label>Ocultar hasta completar dependencias</label>
+                      <select 
+                        className="input-field"
+                        value={!shareSameHideDeps ? 'mixed' : (firstHideDeps === undefined ? 'default' : (firstHideDeps ? 'true' : 'false'))}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'mixed') return;
+                          const nextVal = val === 'default' ? undefined : (val === 'true');
+                          const updatesList = selectedQuests.map(item => ({
+                            id: item.id as string,
+                            updates: { hide_until_deps_complete: nextVal }
+                          }));
+                          updateQuest(updatesList);
+                        }}
+                      >
+                        {!shareSameHideDeps && <option value="mixed">-- Mixto --</option>}
+                        <option value="default">Por Defecto (Heredar)</option>
+                        <option value="true">Sí (Ocultar)</option>
+                        <option value="false">No (Mostrar)</option>
+                      </select>
+                    </div>
+                  </div>
+                );
+              })()}
+
+
               {(() => {
                 const selectedImages = selection.items.filter(item => item.type === 'image');
                 if (selectedImages.length === 0) return null;
@@ -2125,7 +2286,7 @@ function App() {
             )
           )}
           
-          {selection.type === 'image' && selection.id !== null && (
+          {selection.type === 'image' && selection.items.length === 1 && selection.id !== null && (
             <div>
               <h2 className="section-title">Imagen Seleccionada</h2>
               <div className="input-group">
@@ -2243,7 +2404,7 @@ function App() {
             </div>
           )}
 
-          {selection.type === 'quest' && selection.id !== null && (() => {
+          {selection.type === 'quest' && selection.items.length === 1 && selection.id !== null && (() => {
             const selectedQuest = quests.find(q => q && q.id === selection.id);
             if (!selectedQuest) return <div className="empty-state"><p>Misión no encontrada.</p></div>;
 
@@ -2319,14 +2480,23 @@ function App() {
                   <div className="input-group">
                     <label>Forma (Shape)</label>
                     <select className="input-field" 
-                      value={selectedQuest.shape || 'circle'}
-                      onChange={(e) => updateQuest(selection.id as string, { shape: e.target.value })}
+                      value={selectedQuest.shape || 'default'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const nextShape = val === 'default' ? undefined : val;
+                        updateQuest(selection.id as string, { shape: nextShape });
+                      }}
                     >
+                      <option value="default">Por Defecto (Heredar)</option>
                       <option value="circle">Circle</option>
+                      <option value="square">Square</option>
+                      <option value="rsquare">Rounded Square</option>
                       <option value="gear">Gear</option>
                       <option value="octagon">Octagon</option>
-                      <option value="rsquare">Rounded Square</option>
                       <option value="diamond">Diamond</option>
+                      <option value="hexagon">Hexagon</option>
+                      <option value="pentagon">Pentagon</option>
+                      <option value="heart">Heart</option>
                     </select>
                   </div>
                   <div className="input-group">
