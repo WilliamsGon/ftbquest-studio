@@ -1628,6 +1628,236 @@ h1, h2, h3 {
   opacity: 0.85;
 }
 
+/* ========================================================
+   Barra de Pestañas Multicapítulo (ChapterTabBar)
+   ======================================================== */
+.main-viewport-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-canvas, #11111b);
+}
+
+.chapter-tab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  min-height: 38px;
+  background: rgba(17, 19, 26, 0.95);
+  border-bottom: 1px solid var(--panel-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 20;
+  user-select: none;
+  padding: 0 4px;
+}
+
+.chapter-tabs-scroll {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: none; /* Firefox */
+}
+
+.chapter-tabs-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.chapter-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  position: relative;
+  max-width: 220px;
+}
+
+.chapter-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.chapter-tab.active {
+  background: rgba(30, 32, 44, 0.98);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: rgba(123, 97, 255, 0.35);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.chapter-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color);
+  border-radius: 2px 2px 0 0;
+}
+
+.chapter-tab-icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+  color: var(--accent-color);
+}
+
+.chapter-tab.active .chapter-tab-icon {
+  opacity: 1;
+}
+
+.chapter-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-tab-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.chapter-tab.active .chapter-tab-badge {
+  background: rgba(123, 97, 255, 0.18);
+  color: var(--accent-color);
+}
+
+.chapter-tab-dirty {
+  color: #fab387;
+  font-size: 0.65rem;
+  line-height: 1;
+  animation: pulse 2s infinite;
+}
+
+.chapter-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  opacity: 0.6;
+  transition: all 0.12s ease;
+}
+
+.chapter-tab-close:hover {
+  background: rgba(243, 139, 168, 0.2);
+  color: #f38ba8;
+  opacity: 1;
+}
+
+.chapter-tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.chapter-tab-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s ease;
+}
+
+.chapter-tab-action-btn:hover, .chapter-tab-action-btn.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.chapter-tab-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 210px;
+  border-radius: 10px;
+  background: rgba(24, 27, 36, 0.98);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 1000;
+  animation: dropScaleIn 0.15s ease-out;
+}
+
+.chapter-tab-dropdown.right-aligned {
+  left: auto;
+  right: 0;
+}
+
+.chapter-tab-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.chapter-tab-dropdown-item:hover {
+  background: rgba(123, 97, 255, 0.16);
+  color: #ffffff;
+}
+
+
 
 
 

@@ -40,6 +40,9 @@ interface CanvasProps {
   cycleNodeIds?: Set<string>;
   brokenDepQuestIds?: Set<string>;
   onAutoLayout?: (direction: 'LR' | 'TB', onlySelected: boolean) => void;
+  initialStagePos?: { x: number; y: number };
+  initialStageScale?: number;
+  onCameraChange?: (pos: { x: number; y: number }, scale: number) => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -190,11 +193,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   onConnectQuests,
   cycleNodeIds = new Set(),
   brokenDepQuestIds = new Set(),
-  onAutoLayout
+  onAutoLayout,
+  initialStagePos,
+  initialStageScale,
+  onCameraChange
 }) => {
   const [isAutoLayoutMenuOpen, setIsAutoLayoutMenuOpen] = useState(false);
-  const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [stageScale, setStageScale] = useState(initialStageScale ?? 1);
+  const [stagePos, setStagePos] = useState(initialStagePos ?? { x: 0, y: 0 });
   const [localSnapToGrid, setLocalSnapToGrid] = useState(true);
   const [localSnapMode, setLocalSnapMode] = useState<'relative' | 'absolute'>('relative');
   const snapToGrid = propSnapToGrid !== undefined ? propSnapToGrid : localSnapToGrid;
@@ -370,17 +376,25 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   }, [searchMatches, centerOnQuest]);
 
   useEffect(() => {
+    onCameraChange?.(stagePos, stageScale);
+  }, [stagePos, stageScale, onCameraChange]);
+
+  useEffect(() => {
     if (containerRef.current) {
       setDimensions({
         width: containerRef.current.offsetWidth,
         height: containerRef.current.offsetHeight
       });
-      // Centrar el plano (0,0) en el medio de la pantalla
-      setStagePos({
-        x: containerRef.current.offsetWidth / 2,
-        y: containerRef.current.offsetHeight / 2
-      });
+      // Centrar el plano (0,0) en el medio de la pantalla si no hay initialStagePos
+      if (!initialStagePos) {
+        setStagePos({
+          x: containerRef.current.offsetWidth / 2,
+          y: containerRef.current.offsetHeight / 2
+        });
+      }
     }
+
+    onCameraChange?.(stagePos, stageScale);
     
     const handleResize = () => {
       if (containerRef.current) {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { validateQuestGraph } from './utils/graphValidation';
 import { computeAutoLayout } from './utils/autoLayout';
@@ -9,6 +9,8 @@ import { EditorCanvas } from './components/EditorCanvas';
 import { TableView } from './components/TableView';
 import { TexturePickerModal } from './components/TexturePickerModal';
 import { QuestTaskRewardManager } from './components/QuestTaskRewardManager';
+import { ChapterTabBar } from './components/ChapterTabBar';
+import type { ChapterTab } from './types/chapter';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -111,6 +113,12 @@ function App() {
   
   const [quests, setQuests] = useState<any[]>([]);
   const [images, setImages] = useState<any[]>([]);
+
+  // Entorno Multicapítulo (Pestañas de Trabajo Simultáneo)
+  const [tabs, setTabs] = useState<ChapterTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string>('');
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const currentCameraRef = useRef<{ pos: { x: number; y: number }; scale: number }>({ pos: { x: 0, y: 0 }, scale: 1 });
 
   // Niveles Z (order) únicos presentes en las imágenes de fondo
   const availableZLevels = useMemo(() => {
@@ -271,11 +279,17 @@ function App() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyRef = useRef(history);
   const historyIndexRef = useRef(historyIndex);
+  const tabsRef = useRef(tabs);
+  const activeTabIdRef = useRef(activeTabId);
+  const isDirtyRef = useRef(isDirty);
 
   useEffect(() => {
     historyRef.current = history;
     historyIndexRef.current = historyIndex;
-  }, [history, historyIndex]);
+    tabsRef.current = tabs;
+    activeTabIdRef.current = activeTabId;
+    isDirtyRef.current = isDirty;
+  }, [history, historyIndex, tabs, activeTabId, isDirty]);
 
   // Portapapeles para copiar/pegar
   const [clipboard, setClipboard] = useState<{ type: 'quest' | 'image'; data: any }[]>([]);
@@ -338,10 +352,27 @@ function App() {
   const updateState = (newQuests: any[], newImages: any[], bypassHistory = false, newSnbtData?: any) => {
     setQuests(newQuests);
     setImages(newImages);
+    setIsDirty(true);
     
     const finalSnbtData = newSnbtData !== undefined ? newSnbtData : snbtData;
     if (newSnbtData !== undefined) {
       setSnbtData(newSnbtData);
+    }
+
+    if (activeTabIdRef.current) {
+      setTabs(prev => prev.map(t => {
+        if (t.id === activeTabIdRef.current) {
+          return {
+            ...t,
+            quests: newQuests,
+            images: newImages,
+            snbtData: finalSnbtData,
+            title: finalSnbtData?.title || t.title,
+            isDirty: true
+          };
+        }
+        return t;
+      }));
     }
     
     if (!bypassHistory) {
@@ -356,6 +387,19 @@ function App() {
       const nextHistory = [...cleanHistory, { quests: clonedQuests, images: clonedImages, snbtData: clonedSnbt }];
       setHistory(nextHistory);
       setHistoryIndex(cleanHistory.length);
+
+      if (activeTabIdRef.current) {
+        setTabs(prev => prev.map(t => {
+          if (t.id === activeTabIdRef.current) {
+            return {
+              ...t,
+              history: nextHistory,
+              historyIndex: cleanHistory.length
+            };
+          }
+          return t;
+        }));
+      }
     }
   };
 
@@ -365,13 +409,33 @@ function App() {
     if (idx > 0) {
       const prevIndex = idx - 1;
       const prevRecord = hist[prevIndex];
-      setQuests(JSON.parse(JSON.stringify(prevRecord.quests)));
-      setImages(JSON.parse(JSON.stringify(prevRecord.images)));
+      const newQuests = JSON.parse(JSON.stringify(prevRecord.quests));
+      const newImages = JSON.parse(JSON.stringify(prevRecord.images));
+      const newSnbt = prevRecord.snbtData ? JSON.parse(JSON.stringify(prevRecord.snbtData)) : snbtData;
+      setQuests(newQuests);
+      setImages(newImages);
       if (prevRecord.snbtData) {
-        setSnbtData(JSON.parse(JSON.stringify(prevRecord.snbtData)));
+        setSnbtData(newSnbt);
       }
       setHistoryIndex(prevIndex);
       setSelection({ type: null, ids: [] });
+      setIsDirty(true);
+
+      if (activeTabIdRef.current) {
+        setTabs(prev => prev.map(t => {
+          if (t.id === activeTabIdRef.current) {
+            return {
+              ...t,
+              quests: newQuests,
+              images: newImages,
+              snbtData: newSnbt,
+              historyIndex: prevIndex,
+              isDirty: true
+            };
+          }
+          return t;
+        }));
+      }
     }
   };
 
@@ -381,13 +445,33 @@ function App() {
     if (idx < hist.length - 1) {
       const nextIndex = idx + 1;
       const nextRecord = hist[nextIndex];
-      setQuests(JSON.parse(JSON.stringify(nextRecord.quests)));
-      setImages(JSON.parse(JSON.stringify(nextRecord.images)));
+      const newQuests = JSON.parse(JSON.stringify(nextRecord.quests));
+      const newImages = JSON.parse(JSON.stringify(nextRecord.images));
+      const newSnbt = nextRecord.snbtData ? JSON.parse(JSON.stringify(nextRecord.snbtData)) : snbtData;
+      setQuests(newQuests);
+      setImages(newImages);
       if (nextRecord.snbtData) {
-        setSnbtData(JSON.parse(JSON.stringify(nextRecord.snbtData)));
+        setSnbtData(newSnbt);
       }
       setHistoryIndex(nextIndex);
       setSelection({ type: null, ids: [] });
+      setIsDirty(true);
+
+      if (activeTabIdRef.current) {
+        setTabs(prev => prev.map(t => {
+          if (t.id === activeTabIdRef.current) {
+            return {
+              ...t,
+              quests: newQuests,
+              images: newImages,
+              snbtData: newSnbt,
+              historyIndex: nextIndex,
+              isDirty: true
+            };
+          }
+          return t;
+        }));
+      }
     }
   };
 
@@ -656,7 +740,7 @@ function App() {
     }
   };
 
-  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C, Ctrl+V, Ctrl+D)
+  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+W, Ctrl+Tab)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -684,6 +768,20 @@ function App() {
         } else if (e.key === 'd' || e.key === 'D') {
           e.preventDefault();
           duplicateSelection();
+        } else if (e.key === 'w' || e.key === 'W') {
+          e.preventDefault();
+          if (activeTabIdRef.current) {
+            handleCloseTab(activeTabIdRef.current);
+          }
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          if (tabsRef.current.length > 1) {
+            const currentIdx = tabsRef.current.findIndex(t => t.id === activeTabIdRef.current);
+            const nextIdx = e.shiftKey
+              ? (currentIdx <= 0 ? tabsRef.current.length - 1 : currentIdx - 1)
+              : (currentIdx >= tabsRef.current.length - 1 ? 0 : currentIdx + 1);
+            handleSelectTab(tabsRef.current[nextIdx].id);
+          }
         }
       }
     };
@@ -692,41 +790,261 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const processFile = (file: File) => {
-    setFilename(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = parseSNBT(text);
-        setSnbtData(parsed);
-        
-        const initialQuests = parsed.quests && Array.isArray(parsed.quests) ? parsed.quests : [];
-        const initialImages = parsed.images && Array.isArray(parsed.images) ? parsed.images : [];
-        
-        setQuests(initialQuests);
-        setImages(initialImages);
-        
-        // Inicializar historial con estado limpio
-        setHistory([{ 
-          quests: JSON.parse(JSON.stringify(initialQuests)), 
-          images: JSON.parse(JSON.stringify(initialImages)),
-          snbtData: JSON.parse(JSON.stringify(parsed))
-        }]);
-        setHistoryIndex(0);
-      } catch (err) {
-        console.error("Error parsing SNBT:", err);
-        showToast("Error al parsear el archivo SNBT. Revisa la consola.", "warning");
-      }
+  const loadTab = (tab: ChapterTab) => {
+    setActiveTabId(tab.id);
+    setSnbtData(tab.snbtData);
+    setFilename(tab.filename);
+    setQuests(tab.quests);
+    setImages(tab.images);
+    setHistory(tab.history);
+    setHistoryIndex(tab.historyIndex);
+    setSelection(tab.selection);
+    setLockedKeys(tab.lockedKeys || []);
+    setViewMode(tab.viewMode || 'map');
+    setIsDirty(!!tab.isDirty);
+    currentCameraRef.current = {
+      pos: tab.stagePos || { x: 0, y: 0 },
+      scale: tab.stageScale || 1
     };
-    reader.readAsText(file);
+  };
+
+  const handleSelectTab = (targetId: string) => {
+    if (targetId === activeTabIdRef.current) return;
+    const targetTab = tabsRef.current.find(t => t.id === targetId);
+    if (!targetTab) return;
+
+    // Guardar el estado de la pestaña actual antes de conmutar
+    if (activeTabIdRef.current) {
+      setTabs(prev => {
+        return prev.map(t => {
+          if (t.id === activeTabIdRef.current) {
+            return {
+              ...t,
+              filename: filename,
+              title: snbtData?.title || filename.replace(/\.snbt$/, ''),
+              snbtData: snbtData,
+              quests: quests,
+              images: images,
+              history: history,
+              historyIndex: historyIndex,
+              selection: selection,
+              lockedKeys: lockedKeys,
+              viewMode: viewMode,
+              stagePos: currentCameraRef.current.pos,
+              stageScale: currentCameraRef.current.scale,
+              isDirty: isDirty
+            };
+          }
+          return t;
+        });
+      });
+    }
+
+    loadTab(targetTab);
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    const tabToClose = tabsRef.current.find(t => t.id === tabId);
+    if (!tabToClose) return;
+
+    const tabTitle = tabToClose.snbtData?.title || tabToClose.title || tabToClose.filename;
+    const isCurrent = tabId === activeTabIdRef.current;
+    const tabIsDirty = isCurrent ? isDirtyRef.current : tabToClose.isDirty;
+
+    if (tabIsDirty) {
+      const confirmClose = window.confirm(`El capítulo "${tabTitle}" tiene cambios sin guardar.\n¿Deseas cerrarlo de todos modos?`);
+      if (!confirmClose) return;
+    }
+
+    const newTabs = tabsRef.current.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+
+    if (isCurrent) {
+      if (newTabs.length > 0) {
+        const closedIdx = tabsRef.current.findIndex(t => t.id === tabId);
+        const nextTab = newTabs[Math.max(0, closedIdx - 1)];
+        loadTab(nextTab);
+      } else {
+        setActiveTabId('');
+        setSnbtData(null);
+        setFilename('Sin cargar');
+        setQuests([]);
+        setImages([]);
+        setHistory([]);
+        setHistoryIndex(-1);
+        setSelection({ type: null, ids: [], items: [] });
+        setIsDirty(false);
+      }
+    }
+  };
+
+  const handleNewBlankTab = () => {
+    const newId = generateHexId();
+    const newIndex = tabsRef.current.length + 1;
+    const defaultSnbt = {
+      id: newId,
+      group: "",
+      order_index: tabsRef.current.length,
+      filename: `capitulo_${newIndex}`,
+      title: `Nuevo Capítulo ${newIndex}`,
+      icon: "minecraft:book",
+      default_quest_shape: "",
+      quests: [],
+      images: []
+    };
+
+    const newTab: ChapterTab = {
+      id: uuidv4(),
+      filename: `capitulo_${newIndex}.snbt`,
+      title: `Nuevo Capítulo ${newIndex}`,
+      snbtData: defaultSnbt,
+      quests: [],
+      images: [],
+      history: [{
+        quests: [],
+        images: [],
+        snbtData: JSON.parse(JSON.stringify(defaultSnbt))
+      }],
+      historyIndex: 0,
+      selection: { type: null, ids: [], items: [] },
+      lockedKeys: [],
+      viewMode: 'map',
+      isDirty: true
+    };
+
+    if (activeTabIdRef.current) {
+      setTabs(prev => {
+        const updated = prev.map(t => {
+          if (t.id === activeTabIdRef.current) {
+            return {
+              ...t,
+              filename: filename,
+              title: snbtData?.title || filename.replace(/\.snbt$/, ''),
+              snbtData: snbtData,
+              quests: quests,
+              images: images,
+              history: history,
+              historyIndex: historyIndex,
+              selection: selection,
+              lockedKeys: lockedKeys,
+              viewMode: viewMode,
+              stagePos: currentCameraRef.current.pos,
+              stageScale: currentCameraRef.current.scale,
+              isDirty: isDirty
+            };
+          }
+          return t;
+        });
+        return [...updated, newTab];
+      });
+    } else {
+      setTabs(prev => [...prev, newTab]);
+    }
+
+    loadTab(newTab);
+    showToast(`Nuevo capítulo "Nuevo Capítulo ${newIndex}" creado`, 'success');
+  };
+
+  const processFiles = (files: File[]) => {
+    const snbtFiles = files.filter(f => f.name.endsWith('.snbt'));
+    if (snbtFiles.length === 0) {
+      showToast('Por favor, selecciona o arrastra archivos con extensión .snbt', 'warning');
+      return;
+    }
+
+    // Guardar pestaña activa antes de cargar nuevos archivos
+    if (activeTabIdRef.current) {
+      setTabs(prev => prev.map(t => {
+        if (t.id === activeTabIdRef.current) {
+          return {
+            ...t,
+            filename: filename,
+            title: snbtData?.title || filename.replace(/\.snbt$/, ''),
+            snbtData: snbtData,
+            quests: quests,
+            images: images,
+            history: history,
+            historyIndex: historyIndex,
+            selection: selection,
+            lockedKeys: lockedKeys,
+            viewMode: viewMode,
+            stagePos: currentCameraRef.current.pos,
+            stageScale: currentCameraRef.current.scale,
+            isDirty: isDirty
+          };
+        }
+        return t;
+      }));
+    }
+
+    const loadedTabs: ChapterTab[] = [];
+    let processedCount = 0;
+
+    snbtFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          const parsed = parseSNBT(text);
+          const initialQuests = parsed.quests && Array.isArray(parsed.quests) ? parsed.quests : [];
+          const initialImages = parsed.images && Array.isArray(parsed.images) ? parsed.images : [];
+          const chapterTitle = parsed.title || file.name.replace(/\.snbt$/, '');
+
+          const tabId = uuidv4();
+          const tab: ChapterTab = {
+            id: tabId,
+            filename: file.name,
+            title: chapterTitle,
+            snbtData: parsed,
+            quests: initialQuests,
+            images: initialImages,
+            history: [{
+              quests: JSON.parse(JSON.stringify(initialQuests)),
+              images: JSON.parse(JSON.stringify(initialImages)),
+              snbtData: JSON.parse(JSON.stringify(parsed))
+            }],
+            historyIndex: 0,
+            selection: { type: null, ids: [], items: [] },
+            lockedKeys: [],
+            viewMode: 'map',
+            isDirty: false
+          };
+
+          loadedTabs.push(tab);
+        } catch (err) {
+          console.error("Error parsing SNBT for file:", file.name, err);
+          showToast(`Error al parsear "${file.name}"`, "warning");
+        } finally {
+          processedCount++;
+          if (processedCount === snbtFiles.length && loadedTabs.length > 0) {
+            setTabs(prev => {
+              // Si ya había pestañas abiertas con el mismo filename, reemplazarlas
+              const filteredPrev = prev.filter(p => !loadedTabs.some(n => n.filename === p.filename));
+              return [...filteredPrev, ...loadedTabs];
+            });
+
+            // Activar la última pestaña cargada
+            const lastTab = loadedTabs[loadedTabs.length - 1];
+            loadTab(lastTab);
+            showToast(
+              loadedTabs.length === 1 
+                ? `Capítulo "${lastTab.title}" abierto` 
+                : `${loadedTabs.length} capítulos abiertos`, 
+              'success'
+            );
+          }
+        }
+      };
+      reader.readAsText(file);
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processFiles(Array.from(files));
     }
+    e.target.value = '';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -748,13 +1066,9 @@ function App() {
     e.stopPropagation();
     setIsDraggingFile(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      if (file.name.endsWith('.snbt')) {
-        processFile(file);
-      } else {
-        showToast('Por favor, arrastra únicamente archivos con extensión .snbt', 'warning');
-      }
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      processFiles(files);
     }
   };
 
@@ -1052,6 +1366,42 @@ function App() {
     a.download = filename.endsWith('.snbt') ? filename : `${filename}.snbt`;
     a.click();
     URL.revokeObjectURL(url);
+
+    setIsDirty(false);
+    if (activeTabIdRef.current) {
+      setTabs(prev => prev.map(t => t.id === activeTabIdRef.current ? { ...t, isDirty: false } : t));
+    }
+    showToast(`Capítulo "${snbtData.title || filename}" exportado`, 'success');
+  };
+
+  const handleExportAll = () => {
+    if (tabsRef.current.length === 0) return;
+    tabsRef.current.forEach((tab, index) => {
+      setTimeout(() => {
+        const isCurrent = tab.id === activeTabIdRef.current;
+        const currentData = isCurrent ? { ...snbtData, quests, images } : { ...tab.snbtData, quests: tab.quests, images: tab.images };
+
+        currentData.images = (currentData.images || []).map((img: any) => {
+          if (img && typeof img.image === 'string') {
+            return { ...img, image: img.image.replace(/\\/g, '/') };
+          }
+          return img;
+        });
+
+        const outputSNBT = stringifySNBT(currentData);
+        const blob = new Blob([outputSNBT], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = tab.filename.endsWith('.snbt') ? tab.filename : `${tab.filename}.snbt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, index * 250);
+    });
+
+    setIsDirty(false);
+    setTabs(prev => prev.map(t => ({ ...t, isDirty: false })));
+    showToast(`Exportando ${tabsRef.current.length} capítulos...`, 'success');
   };
 
   const addQuest = () => {
@@ -1728,7 +2078,7 @@ function App() {
             <button className="btn btn-secondary btn-full" onClick={() => fileInputRef.current?.click()}>
               <Upload size={16} /> Abrir
             </button>
-            <input type="file" accept=".snbt" ref={fileInputRef} className="file-input-hidden" onChange={handleFileUpload} />
+            <input type="file" accept=".snbt" multiple ref={fileInputRef} className="file-input-hidden" onChange={handleFileUpload} />
             <button className="btn btn-primary btn-full" onClick={handleExport} disabled={!snbtData}>
               <Download size={16} /> Exportar
             </button>
@@ -1919,136 +2269,166 @@ function App() {
         </div>
       </div>
 
-      {/* Canvas Central o Vista de Tabla */}
-      {!snbtData ? (
-        <div className="canvas-container">
-          <div className="empty-state">
-            <MapIcon size={48} opacity={0.5} />
-            <h2>Carga un archivo .snbt para empezar</h2>
-            <p>El canvas interactivo se mostrará aquí.</p>
-          </div>
-        </div>
-      ) : viewMode === 'map' ? (
-        <div className="canvas-container" style={{ position: 'relative' }}>
-          <EditorCanvas 
-            quests={quests}
-            images={images}
-            layersVisible={layers}
-            selection={selection}
-            setSelection={setSelection}
-            updateQuest={updateQuest}
-            updateImage={updateImage}
-            updateQuestsAndImages={updateQuestsAndImages}
-            onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
-            onQuestContextMenu={handleQuestContextMenu}
-            visibleZLevels={visibleZLevels}
-            isPinnedDrawerOpen={isPinnedDrawerOpen}
-            setIsPinnedDrawerOpen={setIsPinnedDrawerOpen}
-            pinnedCount={pinnedAssets.length}
-            snapToGrid={snapToGrid}
-            setSnapToGrid={setSnapToGrid}
-            snapMode={snapMode}
-            setSnapMode={setSnapMode}
-            lockedKeys={lockedKeys}
-            onConnectQuests={handleConnectQuests}
-            cycleNodeIds={graphValidation.cycleNodeIds}
-            brokenDepQuestIds={graphValidation.brokenDepQuestIds}
-            onAutoLayout={handleAutoLayout}
+      {/* Columna Central: Pestañas de Capítulos + Canvas / Vista de Tabla */}
+      <div className="main-viewport-column">
+        {tabs.length > 0 && (
+          <ChapterTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onNewBlankTab={handleNewBlankTab}
+            onOpenFiles={() => fileInputRef.current?.click()}
+            onExportActive={handleExport}
+            onExportAll={handleExportAll}
           />
+        )}
 
-          {/* Cajón deslizable (Drawer) del Portapapeles */}
-          {isPinnedDrawerOpen && (
-            <div className="pinned-drawer">
-              <div className="pinned-drawer-header">
-                <h3 className="pinned-drawer-title">📌 Elementos Anclados</h3>
-                <button 
-                  className="pinned-drawer-close"
-                  onClick={() => setIsPinnedDrawerOpen(false)}
-                  title="Cerrar cajón"
-                >
-                  <Plus size={16} style={{ transform: 'rotate(45deg)' }} />
+        {!snbtData ? (
+          <div className="canvas-container">
+            <div className="empty-state">
+              <MapIcon size={48} opacity={0.5} />
+              <h2>Carga uno o varios archivos .snbt para empezar</h2>
+              <p>Arrastra archivos .snbt aquí o haz clic en "Abrir" para comenzar.</p>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={16} /> Abrir Archivo(s)
+                </button>
+                <button className="btn btn-primary" onClick={handleNewBlankTab}>
+                  <Plus size={16} /> Nuevo Capítulo
                 </button>
               </div>
-              <div className="pinned-drawer-content">
-                {pinnedAssets.length === 0 ? (
-                  <div className="empty-state" style={{ padding: '20px 10px' }}>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      No tienes elementos anclados.
-                    </p>
-                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      Haz clic derecho en el mapa o usa el panel de propiedades para anclar misiones o imágenes.
-                    </p>
-                  </div>
-                ) : (
-                  pinnedAssets.map((asset) => {
-                    let typeLabel = 'Conjunto';
-                    let typeClass = 'group';
-                    if (asset.quests.length === 1 && asset.images.length === 0) {
-                      typeLabel = 'Misión';
-                      typeClass = 'quest';
-                    } else if (asset.quests.length === 0 && asset.images.length === 1) {
-                      typeLabel = 'Imagen';
-                      typeClass = 'image';
-                    }
-
-                    return (
-                      <div key={asset.id} className="pinned-asset-card">
-                        <div className="pinned-asset-meta">
-                          <span className={`pinned-asset-type-badge ${typeClass}`}>
-                            {typeLabel}
-                          </span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                            {new Date(asset.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <h4 className="pinned-asset-name">{asset.title}</h4>
-                        {asset.quests.length > 0 && asset.quests.map((q: any) => (
-                          <p key={q.id} className="pinned-asset-detail">
-                            🔹 Misión: {getDValue(q.title) || q.id}
-                          </p>
-                        ))}
-                        {asset.images.length > 0 && asset.images.map((img: any, idx: number) => (
-                          <p key={idx} className="pinned-asset-detail">
-                            🖼️ Imagen: {img.image ? img.image.substring(img.image.lastIndexOf('/') + 1) : 'Decoración'}
-                          </p>
-                        ))}
-                        
-                        <div className="pinned-asset-actions">
-                          <button 
-                            className="pinned-asset-btn-paste"
-                            onClick={() => pastePinnedAsset(asset)}
-                            title="Pegar este activo en el centro del mapa"
-                          >
-                            📋 Pegar
-                          </button>
-                          <button 
-                            className="pinned-asset-btn-delete"
-                            onClick={() => {
-                              const nextAssets = pinnedAssets.filter((a) => a.id !== asset.id);
-                              savePinnedAssets(nextAssets);
-                            }}
-                            title="Desanclar elemento"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
             </div>
-          )}
-        </div>
-      ) : (
-        <TableView 
-          quests={quests}
-          images={images}
-          updateQuest={updateQuest}
-          updateImage={updateImage}
-          onOpenNbtEditor={(title, value, onSave) => setNbtEditor({ title, value: JSON.stringify(value, null, 2), onSave })}
-        />
-      )}
+          </div>
+        ) : viewMode === 'map' ? (
+          <div className="canvas-container" style={{ position: 'relative', flex: 1 }}>
+            <EditorCanvas 
+              key={activeTabId}
+              quests={quests}
+              images={images}
+              layersVisible={layers}
+              selection={selection}
+              setSelection={setSelection}
+              updateQuest={updateQuest}
+              updateImage={updateImage}
+              updateQuestsAndImages={updateQuestsAndImages}
+              onPointerPosChange={(pos) => mouseCanvasPosRef.current = pos}
+              onQuestContextMenu={handleQuestContextMenu}
+              visibleZLevels={visibleZLevels}
+              isPinnedDrawerOpen={isPinnedDrawerOpen}
+              setIsPinnedDrawerOpen={setIsPinnedDrawerOpen}
+              pinnedCount={pinnedAssets.length}
+              snapToGrid={snapToGrid}
+              setSnapToGrid={setSnapToGrid}
+              snapMode={snapMode}
+              setSnapMode={setSnapMode}
+              lockedKeys={lockedKeys}
+              onConnectQuests={handleConnectQuests}
+              cycleNodeIds={graphValidation.cycleNodeIds}
+              brokenDepQuestIds={graphValidation.brokenDepQuestIds}
+              onAutoLayout={handleAutoLayout}
+              initialStagePos={currentCameraRef.current.pos}
+              initialStageScale={currentCameraRef.current.scale}
+              onCameraChange={(pos, scale) => {
+                currentCameraRef.current = { pos, scale };
+              }}
+            />
+
+            {/* Cajón deslizable (Drawer) del Portapapeles */}
+            {isPinnedDrawerOpen && (
+              <div className="pinned-assets-drawer">
+                <div className="pinned-assets-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Pin size={18} color="var(--accent-primary)" />
+                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Prefabs Anclados</h3>
+                  </div>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ padding: '4px 8px', height: 'auto' }}
+                    onClick={() => setIsPinnedDrawerOpen(false)}
+                    title="Cerrar cajón"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="pinned-assets-list">
+                  {pinnedAssets.length === 0 ? (
+                    <div className="pinned-empty">
+                      <p>No tienes elementos anclados todavía.</p>
+                      <small>Selecciona misiones o decoraciones y presiona "📌 Anclar al Portapapeles" en el menú contextual o en el inspector.</small>
+                    </div>
+                  ) : (
+                    pinnedAssets.map((asset) => {
+                      let typeLabel = 'Mixto';
+                      let typeClass = 'mixed';
+                      if (asset.quests.length === 1 && asset.images.length === 0) {
+                        typeLabel = 'Misión';
+                        typeClass = 'quest';
+                      } else if (asset.quests.length === 0 && asset.images.length === 1) {
+                        typeLabel = 'Imagen';
+                        typeClass = 'image';
+                      }
+
+                      return (
+                        <div key={asset.id} className="pinned-asset-card">
+                          <div className="pinned-asset-meta">
+                            <span className={`pinned-asset-type-badge ${typeClass}`}>
+                              {typeLabel}
+                            </span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                              {new Date(asset.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <h4 className="pinned-asset-name">{asset.title}</h4>
+                          {asset.quests.length > 0 && asset.quests.map((q: any) => (
+                            <p key={q.id} className="pinned-asset-detail">
+                              🔹 Misión: {getDValue(q.title) || q.id}
+                            </p>
+                          ))}
+                          {asset.images.length > 0 && asset.images.map((img: any, idx: number) => (
+                            <p key={idx} className="pinned-asset-detail">
+                              🖼️ Imagen: {img.image ? img.image.substring(img.image.lastIndexOf('/') + 1) : 'Decoración'}
+                            </p>
+                          ))}
+                          
+                          <div className="pinned-asset-actions">
+                            <button 
+                              className="pinned-asset-btn-paste"
+                              onClick={() => pastePinnedAsset(asset)}
+                              title="Pegar este activo en el centro del mapa"
+                            >
+                              📋 Pegar
+                            </button>
+                            <button 
+                              className="pinned-asset-btn-delete"
+                              onClick={() => {
+                                const nextAssets = pinnedAssets.filter((a) => a.id !== asset.id);
+                                savePinnedAssets(nextAssets);
+                              }}
+                              title="Desanclar elemento"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <TableView 
+            quests={quests}
+            images={images}
+            updateQuest={updateQuest}
+            updateImage={updateImage}
+            onOpenNbtEditor={(title, value, onSave) => setNbtEditor({ title, value: JSON.stringify(value, null, 2), onSave })}
+          />
+        )}
+      </div>
 
       {/* Sidebar Derecha - Propiedades */}
       {viewMode === 'map' && !isRightSidebarCollapsed && (
