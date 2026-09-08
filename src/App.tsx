@@ -237,9 +237,10 @@ function App() {
   
   const [layers, setLayers] = useState({ quests: true, images: true, dependencies: true });
   const [rawSelection, setRawSelection] = useState<{
-    type: 'quest' | 'image' | 'mixed' | null;
+    type: 'quest' | 'image' | 'mixed' | 'dependency' | null;
     ids: (string | number)[];
     items: { type: 'quest' | 'image'; id: string | number }[];
+    dependency?: { sourceId: string; targetId: string } | null;
   }>({ type: null, ids: [], items: [] });
 
   const [contextMenu, setContextMenu] = useState<{
@@ -303,32 +304,46 @@ function App() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [snapMode, setSnapMode] = useState<'relative' | 'absolute'>('relative');
 
+  // Estilo de cables de conexión
+  const [connectionLineStyle, setConnectionLineStyle] = useState<'bezier' | 'straight' | 'orthogonal'>(() => {
+    const saved = localStorage.getItem('ftb_connection_line_style');
+    return (saved === 'straight' || saved === 'orthogonal') ? saved : 'bezier';
+  });
+
+  const handleConnectionLineStyleChange = (style: 'bezier' | 'straight' | 'orthogonal') => {
+    setConnectionLineStyle(style);
+    localStorage.setItem('ftb_connection_line_style', style);
+  };
+
   const selection = {
     type: rawSelection.type,
     ids: rawSelection.ids,
     items: rawSelection.items,
-    id: rawSelection.ids[0] ?? null
+    id: rawSelection.ids[0] ?? null,
+    dependency: rawSelection.dependency ?? null
   };
 
   const setSelection = (newSel: { 
-    type: 'quest' | 'image' | 'mixed' | null; 
+    type: 'quest' | 'image' | 'mixed' | 'dependency' | null; 
     id?: string | number | null; 
     ids?: (string | number)[];
     items?: { type: 'quest' | 'image'; id: string | number }[];
+    dependency?: { sourceId: string; targetId: string } | null;
   }) => {
     let finalItems = newSel.items || [];
     if (!newSel.items && newSel.ids && newSel.type) {
-      if (newSel.type !== 'mixed' && newSel.type !== null) {
+      if (newSel.type !== 'mixed' && newSel.type !== 'dependency' && newSel.type !== null) {
         finalItems = newSel.ids.map(id => ({ type: newSel.type as 'quest' | 'image', id }));
       }
-    } else if (!newSel.items && newSel.id !== undefined && newSel.id !== null && newSel.type && newSel.type !== 'mixed') {
+    } else if (!newSel.items && newSel.id !== undefined && newSel.id !== null && newSel.type && newSel.type !== 'mixed' && newSel.type !== 'dependency') {
       finalItems = [{ type: newSel.type, id: newSel.id }];
     }
 
     setRawSelection({
       type: newSel.type,
       ids: newSel.ids ? newSel.ids : (newSel.id !== undefined && newSel.id !== null ? [newSel.id] : []),
-      items: finalItems
+      items: finalItems,
+      dependency: newSel.dependency ?? null
     });
   };
 
@@ -782,6 +797,11 @@ function App() {
               : (currentIdx >= tabsRef.current.length - 1 ? 0 : currentIdx + 1);
             handleSelectTab(tabsRef.current[nextIdx].id);
           }
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectionRef.current.type === 'dependency') {
+          e.preventDefault();
+          deleteSelectedDependency();
         }
       }
     };
@@ -1509,6 +1529,264 @@ function App() {
     }
 
     updateQuest(targetId, { dependencies: newDeps.length > 0 ? newDeps : undefined });
+  };
+
+  const invertSelectedDependency = () => {
+    if (selection.type !== 'dependency' || !selection.dependency) return;
+    const { sourceId, targetId } = selection.dependency;
+
+    const nextQuests = quests.map(q => {
+      if (q.id === targetId) {
+        const curDeps = Array.isArray(q.dependencies) ? q.dependencies : (q.dependencies ? [q.dependencies] : []);
+        const filtered = curDeps.filter((d: any) => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
+        return {
+          ...q,
+          dependencies: filtered.length > 0 ? filtered : undefined
+        };
+      }
+      if (q.id === sourceId) {
+        const curDeps = Array.isArray(q.dependencies) ? [...q.dependencies] : (q.dependencies ? [q.dependencies] : []);
+        const strDeps = curDeps.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
+        if (!strDeps.includes(targetId)) {
+          curDeps.push(targetId);
+        }
+        return {
+          ...q,
+          dependencies: curDeps
+        };
+      }
+      return q;
+    });
+
+    updateState(nextQuests, images);
+    setSelection({
+      type: 'dependency',
+      ids: [`${targetId}->${sourceId}`],
+      items: [],
+      dependency: { sourceId: targetId, targetId: sourceId }
+    });
+    showToast(`Dirección invertida: ${targetId} ➔ ${sourceId}`, 'info');
+  };
+
+  const deleteSelectedDependency = () => {
+    if (selection.type !== 'dependency' || !selection.dependency) return;
+    const { sourceId, targetId } = selection.dependency;
+
+    const nextQuests = quests.map(q => {
+      if (q.id === targetId) {
+        const curDeps = Array.isArray(q.dependencies) ? q.dependencies : (q.dependencies ? [q.dependencies] : []);
+        const filtered = curDeps.filter((d: any) => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
+        return {
+          ...q,
+          dependencies: filtered.length > 0 ? filtered : undefined
+        };
+      }
+      return q;
+    });
+
+    updateState(nextQuests, images);
+    setSelection({ type: null, ids: [], items: [] });
+    showToast(`Dependencia eliminada: ${sourceId} ➔ ${targetId}`, 'info');
+  };
+
+  const handleBatchReplace = (
+    searchQuery: string,
+    replaceWith: string,
+    scope: 'current' | 'all',
+    fields: {
+      titles: boolean;
+      descriptions: boolean;
+      tasks: boolean;
+      rewards: boolean;
+      icons: boolean;
+    }
+  ) => {
+    if (!searchQuery) return;
+
+    let totalReplacements = 0;
+    let modifiedQuestsCount = 0;
+
+    const replaceInQuest = (q: any) => {
+      let isModified = false;
+      const qCopy = JSON.parse(JSON.stringify(q));
+
+      // 1. Títulos y Subtítulos
+      if (fields.titles) {
+        if (typeof qCopy.title === 'string' && qCopy.title.includes(searchQuery)) {
+          const count = qCopy.title.split(searchQuery).length - 1;
+          qCopy.title = qCopy.title.replaceAll(searchQuery, replaceWith);
+          totalReplacements += count;
+          isModified = true;
+        }
+        if (typeof qCopy.subtitle === 'string' && qCopy.subtitle.includes(searchQuery)) {
+          const count = qCopy.subtitle.split(searchQuery).length - 1;
+          qCopy.subtitle = qCopy.subtitle.replaceAll(searchQuery, replaceWith);
+          totalReplacements += count;
+          isModified = true;
+        }
+      }
+
+      // 2. Descripciones
+      if (fields.descriptions && Array.isArray(qCopy.description)) {
+        qCopy.description = qCopy.description.map((line: any) => {
+          if (typeof line === 'string' && line.includes(searchQuery)) {
+            const count = line.split(searchQuery).length - 1;
+            totalReplacements += count;
+            isModified = true;
+            return line.replaceAll(searchQuery, replaceWith);
+          }
+          return line;
+        });
+      }
+
+      // 3. Tareas
+      if (fields.tasks && qCopy.tasks) {
+        const taskList = Array.isArray(qCopy.tasks) ? qCopy.tasks : [qCopy.tasks];
+        taskList.forEach((t: any) => {
+          if (!t) return;
+          if (typeof t.item === 'string' && t.item.includes(searchQuery)) {
+            const count = t.item.split(searchQuery).length - 1;
+            t.item = t.item.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+          if (t.item && typeof t.item === 'object' && typeof t.item.id === 'string' && t.item.id.includes(searchQuery)) {
+            const count = t.item.id.split(searchQuery).length - 1;
+            t.item.id = t.item.id.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+          if (typeof t.title === 'string' && t.title.includes(searchQuery)) {
+            const count = t.title.split(searchQuery).length - 1;
+            t.title = t.title.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+        });
+      }
+
+      // 4. Recompensas
+      if (fields.rewards && qCopy.rewards) {
+        const rewardList = Array.isArray(qCopy.rewards) ? qCopy.rewards : [qCopy.rewards];
+        rewardList.forEach((r: any) => {
+          if (!r) return;
+          if (typeof r.item === 'string' && r.item.includes(searchQuery)) {
+            const count = r.item.split(searchQuery).length - 1;
+            r.item = r.item.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+          if (r.item && typeof r.item === 'object' && typeof r.item.id === 'string' && r.item.id.includes(searchQuery)) {
+            const count = r.item.id.split(searchQuery).length - 1;
+            r.item.id = r.item.id.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+          if (typeof r.title === 'string' && r.title.includes(searchQuery)) {
+            const count = r.title.split(searchQuery).length - 1;
+            r.title = r.title.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+          if (typeof r.command === 'string' && r.command.includes(searchQuery)) {
+            const count = r.command.split(searchQuery).length - 1;
+            r.command = r.command.replaceAll(searchQuery, replaceWith);
+            totalReplacements += count;
+            isModified = true;
+          }
+        });
+      }
+
+      // 5. Iconos
+      if (fields.icons) {
+        if (typeof qCopy.icon === 'string' && qCopy.icon.includes(searchQuery)) {
+          const count = qCopy.icon.split(searchQuery).length - 1;
+          qCopy.icon = qCopy.icon.replaceAll(searchQuery, replaceWith);
+          totalReplacements += count;
+          isModified = true;
+        }
+      }
+
+      if (isModified) modifiedQuestsCount++;
+      return isModified ? qCopy : q;
+    };
+
+    const replaceInImages = (imgList: any[]) => {
+      if (!fields.icons) return imgList;
+      return imgList.map(img => {
+        if (img && typeof img.image === 'string' && img.image.includes(searchQuery)) {
+          const count = img.image.split(searchQuery).length - 1;
+          totalReplacements += count;
+          return { ...img, image: img.image.replaceAll(searchQuery, replaceWith) };
+        }
+        return img;
+      });
+    };
+
+    if (scope === 'current') {
+      const nextQuests = quests.map(replaceInQuest);
+      const nextImages = replaceInImages(images);
+      updateState(nextQuests, nextImages);
+      showToast(`Reemplazo completado: ${totalReplacements} ocurrencia(s) en ${modifiedQuestsCount} misión(es)`, 'success');
+    } else {
+      const nextCurrentQuests = quests.map(replaceInQuest);
+      const nextCurrentImages = replaceInImages(images);
+      updateState(nextCurrentQuests, nextCurrentImages);
+
+      setTabs(prev => prev.map(t => {
+        if (t.id === activeTabIdRef.current) return t;
+        const tabQuests = t.quests.map(replaceInQuest);
+        const tabImages = replaceInImages(t.images);
+        return {
+          ...t,
+          quests: tabQuests,
+          images: tabImages,
+          isDirty: true
+        };
+      }));
+
+      showToast(`Reemplazo masivo: ${totalReplacements} ocurrencia(s) en todas las pestañas`, 'success');
+    }
+  };
+
+  const handleReplaceSingle = (match: any, replaceWith: string) => {
+    if (!match || !match.quest) return;
+    const targetQId = match.quest.id;
+    const qObj = quests.find(q => q.id === targetQId);
+    if (!qObj) return;
+
+    const qCloned = JSON.parse(JSON.stringify(qObj));
+    const rawDetail = match.matchDetail || '';
+    const colonIdx = rawDetail.indexOf(': ');
+    const term = colonIdx !== -1 ? rawDetail.substring(colonIdx + 2) : '';
+
+    if (match.matchField === 'title' && typeof qCloned.title === 'string') {
+      qCloned.title = qCloned.title.replace(term || qCloned.title, replaceWith);
+    } else if (match.matchField === 'subtitle' && typeof qCloned.subtitle === 'string') {
+      qCloned.subtitle = qCloned.subtitle.replace(term || qCloned.subtitle, replaceWith);
+    } else if (match.matchField === 'description' && Array.isArray(qCloned.description)) {
+      qCloned.description = qCloned.description.map((l: string) => typeof l === 'string' ? l.replace(term, replaceWith) : l);
+    } else if (match.matchField === 'task' && qCloned.tasks) {
+      const taskList = Array.isArray(qCloned.tasks) ? qCloned.tasks : [qCloned.tasks];
+      taskList.forEach((t: any) => {
+        if (!t) return;
+        if (typeof t.item === 'string') t.item = t.item.replace(term, replaceWith);
+        if (t.item && typeof t.item === 'object' && typeof t.item.id === 'string') t.item.id = t.item.id.replace(term, replaceWith);
+        if (typeof t.title === 'string') t.title = t.title.replace(term, replaceWith);
+      });
+    } else if (match.matchField === 'reward' && qCloned.rewards) {
+      const rewardList = Array.isArray(qCloned.rewards) ? qCloned.rewards : [qCloned.rewards];
+      rewardList.forEach((r: any) => {
+        if (!r) return;
+        if (typeof r.item === 'string') r.item = r.item.replace(term, replaceWith);
+        if (r.item && typeof r.item === 'object' && typeof r.item.id === 'string') r.item.id = r.item.id.replace(term, replaceWith);
+        if (typeof r.title === 'string') r.title = r.title.replace(term, replaceWith);
+        if (typeof r.command === 'string') r.command = r.command.replace(term, replaceWith);
+      });
+    }
+
+    updateQuest(targetQId, qCloned);
+    showToast(`Coincidencia reemplazada en "${getDValue(qCloned.title) || targetQId}"`, 'success');
   };
 
   const makeSelectedDependOnTarget = () => {
@@ -2332,6 +2610,11 @@ function App() {
               onCameraChange={(pos, scale) => {
                 currentCameraRef.current = { pos, scale };
               }}
+              connectionLineStyle={connectionLineStyle}
+              setConnectionLineStyle={handleConnectionLineStyleChange}
+              totalOpenTabsCount={tabs.length}
+              onBatchReplace={handleBatchReplace}
+              onReplaceSingle={handleReplaceSingle}
             />
 
             {/* Cajón deslizable (Drawer) del Portapapeles */}
@@ -3065,7 +3348,215 @@ function App() {
             </div>
           )}
 
-          {selection.items.length === 0 && (
+          {/* Inspector de Conexión de Dependencia */}
+          {selection.type === 'dependency' && selection.dependency && (() => {
+            const { sourceId, targetId } = selection.dependency!;
+            const sourceQ = quests.find(q => q.id === sourceId);
+            const targetQ = quests.find(q => q.id === targetId);
+
+            const sourceTitle = String(getDValue(sourceQ?.title) || sourceQ?.id || sourceId);
+            const targetTitle = String(getDValue(targetQ?.title) || targetQ?.id || targetId);
+
+            const isHiddenInGame = targetQ?.hide_dependency_lines === true;
+            const minReq = targetQ?.min_required_dependencies !== undefined ? Number(getDValue(targetQ.min_required_dependencies)) : 0;
+            const depReq = String(targetQ?.dependency_requirement || 'all_completed');
+            const totalDepsCount = Array.isArray(targetQ?.dependencies) ? targetQ.dependencies.length : (targetQ?.dependencies ? 1 : 0);
+
+            return (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h2 className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Share2 size={18} className="text-accent" /> Conexión de Dependencia
+                  </h2>
+                  <button
+                    className="btn-icon"
+                    onClick={deleteSelectedDependency}
+                    title="Eliminar esta dependencia (Delete / Supr)"
+                    style={{ padding: '6px', color: '#f38ba8' }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                {/* Tarjeta de flujo origen -> destino */}
+                <div className="dependency-inspector-card">
+                  <div className="dependency-flow-row">
+                    <div 
+                      className="dependency-node-box"
+                      style={{ cursor: 'pointer' }}
+                      title="Clic para seleccionar la misión origen"
+                      onClick={() => {
+                        if (sourceQ) {
+                          setSelection({
+                            type: 'quest',
+                            id: sourceQ.id,
+                            ids: [sourceQ.id],
+                            items: [{ type: 'quest', id: sourceQ.id }]
+                          });
+                        }
+                      }}
+                    >
+                      <span className="dependency-node-role source">Origen (Requisito)</span>
+                      <span className="dependency-node-title">{sourceTitle}</span>
+                      <span className="dependency-node-id">#{sourceId}</span>
+                    </div>
+
+                    <div className="dependency-flow-arrow" title="Flujo de dependencia">
+                      ➔
+                    </div>
+
+                    <div 
+                      className="dependency-node-box"
+                      style={{ cursor: 'pointer' }}
+                      title="Clic para seleccionar la misión destino"
+                      onClick={() => {
+                        if (targetQ) {
+                          setSelection({
+                            type: 'quest',
+                            id: targetQ.id,
+                            ids: [targetQ.id],
+                            items: [{ type: 'quest', id: targetQ.id }]
+                          });
+                        }
+                      }}
+                    >
+                      <span className="dependency-node-role target">Destino (Desbloqueada)</span>
+                      <span className="dependency-node-title">{targetTitle}</span>
+                      <span className="dependency-node-id">#{targetId}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%', fontSize: '0.78rem', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '4px' }}
+                    onClick={invertSelectedDependency}
+                    title="Invertir la dirección de la dependencia entre ambas misiones"
+                  >
+                    <RotateCcw size={14} /> Invertir Dirección de Flecha
+                  </button>
+                </div>
+
+                {/* Opciones de Cable y Comportamiento en FTB Quests */}
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                  Propiedades de Desbloqueo (Misión Destino)
+                </h3>
+
+                <div className="input-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={isHiddenInGame}
+                      onChange={(e) => {
+                        if (targetQ) {
+                          updateQuest(targetId, {
+                            hide_dependency_lines: e.target.checked ? true : undefined
+                          });
+                        }
+                      }}
+                      style={{ accentColor: 'var(--accent-color)', width: '16px', height: '16px' }}
+                    />
+                    <span>Ocultar cable en el juego (<code>hide_dependency_lines</code>)</span>
+                  </label>
+                  <small style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginLeft: '24px' }}>
+                    Si se marca, el cable se verá atenuado y punteado en el lienzo y no se dibujará en la interfaz de FTB Quests dentro de Minecraft.
+                  </small>
+                </div>
+
+                <div className="input-group" style={{ marginTop: '12px' }}>
+                  <label>Criterio de Desbloqueo (<code>dependency_requirement</code>)</label>
+                  <select
+                    className="input-field"
+                    value={depReq}
+                    onChange={(e) => {
+                      if (targetQ) {
+                        updateQuest(targetId, {
+                          dependency_requirement: e.target.value === 'all_completed' ? undefined : e.target.value
+                        });
+                      }
+                    }}
+                  >
+                    <option value="all_completed">Todas las dependencias completadas (default)</option>
+                    <option value="one_completed">Al menos una dependencia completada</option>
+                    <option value="all_started">Todas las dependencias iniciadas</option>
+                    <option value="one_started">Al menos una dependencia iniciada</option>
+                  </select>
+                </div>
+
+                <div className="input-group">
+                  <label>Mínimo de Dependencias Requeridas (<code>min_required_dependencies</code>)</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={Math.max(1, totalDepsCount)}
+                      className="input-field"
+                      value={minReq}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (targetQ) {
+                          updateQuest(targetId, {
+                            min_required_dependencies: isNaN(val) || val <= 0 ? undefined : val
+                          });
+                        }
+                      }}
+                    />
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      de {totalDepsCount} total{totalDepsCount !== 1 ? 'es' : ''}
+                    </span>
+                  </div>
+                  <small style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+                    0 = se requieren todas. Si pones ej. 1, con cumplir cualquiera de sus {totalDepsCount} dependencias se desbloqueará.
+                  </small>
+                </div>
+
+                {/* Selector de Estilo Visual de Cables */}
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Estilo de Conexión en el Lienzo
+                  </label>
+                  <div className="connection-style-group">
+                    <button
+                      className={`connection-style-btn ${connectionLineStyle === 'bezier' ? 'active' : ''}`}
+                      onClick={() => handleConnectionLineStyleChange('bezier')}
+                      type="button"
+                    >
+                      <span style={{ fontSize: '1.1rem' }}>〰️</span>
+                      <span>Curva Bezier</span>
+                    </button>
+                    <button
+                      className={`connection-style-btn ${connectionLineStyle === 'straight' ? 'active' : ''}`}
+                      onClick={() => handleConnectionLineStyleChange('straight')}
+                      type="button"
+                    >
+                      <span style={{ fontSize: '1.1rem' }}>➔</span>
+                      <span>Recta Directa</span>
+                    </button>
+                    <button
+                      className={`connection-style-btn ${connectionLineStyle === 'orthogonal' ? 'active' : ''}`}
+                      onClick={() => handleConnectionLineStyleChange('orthogonal')}
+                      type="button"
+                    >
+                      <span style={{ fontSize: '1.1rem' }}>⤷</span>
+                      <span>Ortogonal</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Botón para eliminar conexión */}
+                <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <button 
+                    className="btn-icon" 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: 'rgba(255, 60, 60, 0.2)', color: '#ff8888', borderRadius: '6px', padding: '10px', fontSize: '0.8rem' }} 
+                    onClick={deleteSelectedDependency}
+                  >
+                    <Trash2 size={14} /> Eliminar Esta Dependencia
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {selection.type !== 'dependency' && selection.items.length === 0 && (
             snbtData ? (
               <div>
                 <h2 className="section-title">Propiedades del Capítulo</h2>
@@ -3629,6 +4120,70 @@ function App() {
                       >
                         Añadir
                       </button>
+                    </div>
+                  )}
+
+                  {/* Configuración avanzada de dependencias de la misión */}
+                  {normalizedDeps.length > 0 && (
+                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <input
+                          type="checkbox"
+                          id="quest-hide-deps"
+                          checked={selectedQuest.hide_dependency_lines === true}
+                          onChange={(e) => {
+                            updateQuest(selectedQuest.id, {
+                              hide_dependency_lines: e.target.checked ? true : undefined
+                            });
+                          }}
+                          style={{ accentColor: 'var(--accent-color)' }}
+                        />
+                        <label htmlFor="quest-hide-deps" style={{ fontSize: '0.78rem', cursor: 'pointer', margin: 0 }}>
+                          Ocultar cables entrantes en el juego (<code>hide_dependency_lines</code>)
+                        </label>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Criterio de Desbloqueo</label>
+                          <select
+                            className="input-field"
+                            style={{ fontSize: '0.78rem', height: '30px' }}
+                            value={String(selectedQuest.dependency_requirement || 'all_completed')}
+                            onChange={(e) => {
+                              updateQuest(selectedQuest.id, {
+                                dependency_requirement: e.target.value === 'all_completed' ? undefined : e.target.value
+                              });
+                            }}
+                          >
+                            <option value="all_completed">Todas completadas (default)</option>
+                            <option value="one_completed">Al menos una completada</option>
+                            <option value="all_started">Todas iniciadas</option>
+                            <option value="one_started">Al menos una iniciada</option>
+                          </select>
+                        </div>
+
+                        {normalizedDeps.length > 1 && (
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Mínimo requeridas</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={normalizedDeps.length}
+                              className="input-field"
+                              style={{ fontSize: '0.78rem', height: '30px' }}
+                              placeholder={`0 = todas (${normalizedDeps.length})`}
+                              value={selectedQuest.min_required_dependencies !== undefined ? Number(getDValue(selectedQuest.min_required_dependencies)) : ''}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                updateQuest(selectedQuest.id, {
+                                  min_required_dependencies: isNaN(val) || val <= 0 ? undefined : val
+                                });
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

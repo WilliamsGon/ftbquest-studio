@@ -5,22 +5,25 @@ import { MousePointer, Hand, Magnet, Sparkles, ChevronDown, Search } from 'lucid
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
 import { Minimap } from './Minimap';
-import { QuestSearchBar, type SearchMatch } from './QuestSearchBar';
+import { QuestSearchBar, type SearchMatch, type ReplaceFieldsConfig } from './QuestSearchBar';
+import { computeSmartSnapping, type AlignmentGuide } from '../utils/smartSnapping';
 
 interface CanvasProps {
   quests: any[];
   images: any[];
   layersVisible: { quests: boolean; images: boolean; dependencies: boolean };
   selection: { 
-    type: 'quest' | 'image' | 'mixed' | null; 
+    type: 'quest' | 'image' | 'mixed' | 'dependency' | null; 
     ids: (string | number)[]; 
     items: { type: 'quest' | 'image'; id: string | number }[];
+    dependency?: { sourceId: string; targetId: string } | null;
   };
   setSelection: (sel: { 
-    type: 'quest' | 'image' | 'mixed' | null; 
+    type: 'quest' | 'image' | 'mixed' | 'dependency' | null; 
     ids: (string | number)[]; 
     id?: string | number | null;
     items?: { type: 'quest' | 'image'; id: string | number }[];
+    dependency?: { sourceId: string; targetId: string } | null;
   }) => void;
   updateQuest: (idOrUpdatesList: any, updates?: any) => void;
   updateImage: (indexOrUpdatesList: any, updates?: any) => void;
@@ -43,6 +46,16 @@ interface CanvasProps {
   initialStagePos?: { x: number; y: number };
   initialStageScale?: number;
   onCameraChange?: (pos: { x: number; y: number }, scale: number) => void;
+  connectionLineStyle?: 'bezier' | 'straight' | 'orthogonal';
+  setConnectionLineStyle?: (style: 'bezier' | 'straight' | 'orthogonal') => void;
+  totalOpenTabsCount?: number;
+  onBatchReplace?: (
+    searchQuery: string,
+    replaceWith: string,
+    scope: 'current' | 'all',
+    fields: ReplaceFieldsConfig
+  ) => void;
+  onReplaceSingle?: (match: SearchMatch, replaceWith: string) => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -196,7 +209,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   onAutoLayout,
   initialStagePos,
   initialStageScale,
-  onCameraChange
+  onCameraChange,
+  connectionLineStyle: propConnectionLineStyle,
+  setConnectionLineStyle: propSetConnectionLineStyle,
+  totalOpenTabsCount = 1,
+  onBatchReplace,
+  onReplaceSingle
 }) => {
   const [isAutoLayoutMenuOpen, setIsAutoLayoutMenuOpen] = useState(false);
   const [stageScale, setStageScale] = useState(initialStageScale ?? 1);
@@ -207,6 +225,28 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   const setSnapToGrid = propSetSnapToGrid || setLocalSnapToGrid;
   const snapMode = propSnapMode !== undefined ? propSnapMode : localSnapMode;
   const setSnapMode = propSetSnapMode || setLocalSnapMode;
+
+  // Estilo de cables de conexión (Curva Bezier, Recta, Ortogonal)
+  const [localConnectionLineStyle, setLocalConnectionLineStyle] = useState<'bezier' | 'straight' | 'orthogonal'>(() => {
+    const saved = localStorage.getItem('ftb_connection_line_style');
+    return (saved === 'straight' || saved === 'orthogonal') ? saved : 'bezier';
+  });
+  const connectionLineStyle = propConnectionLineStyle !== undefined ? propConnectionLineStyle : localConnectionLineStyle;
+  const setConnectionLineStyle = (style: 'bezier' | 'straight' | 'orthogonal') => {
+    if (propSetConnectionLineStyle) {
+      propSetConnectionLineStyle(style);
+    } else {
+      setLocalConnectionLineStyle(style);
+    }
+    localStorage.setItem('ftb_connection_line_style', style);
+  };
+
+  // Guías Magnéticas Inteligentes (Smart Snapping)
+  const [smartGuidesEnabled, setSmartGuidesEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('ftb_smart_guides') !== 'false';
+  });
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -231,16 +271,22 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   } | null>(null);
   const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
-  // Buscador Rápido de Misiones (Ctrl + F)
+  // Buscador y Reemplazo de Misiones (Ctrl + F / Ctrl + H)
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchInitialMode, setSearchInitialMode] = useState<'search' | 'replace'>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
-  // Atajo de teclado: Ctrl+F para abrir el buscador rápido
+  // Atajos de teclado: Ctrl+F para buscar y Ctrl+H para reemplazar
   useEffect(() => {
     const handleSearchShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
+        setSearchInitialMode('search');
+        setIsSearchOpen(true);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setSearchInitialMode('replace');
         setIsSearchOpen(true);
       }
     };
@@ -523,80 +569,97 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         cursor: activeTool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'default'
       }}
     >
-      {/* Barra de Herramientas Flotante */}
+      {/* Barra de Herramientas Flotante (Dock segmentado compacto estilo Figma) */}
       <div className="canvas-toolbar">
-        <button 
-          className={`toolbar-btn ${activeTool === 'select' ? 'active' : ''}`}
-          onClick={() => setActiveTool('select')}
-          title="Herramienta de Selección (Arrastrar área)"
-        >
-          <MousePointer size={16} />
-          Seleccionar
-        </button>
-        <button 
-          className={`toolbar-btn ${activeTool === 'pan' ? 'active' : ''}`}
-          onClick={() => setActiveTool('pan')}
-          title="Mover Plano (Mantén presionada la Barra Espaciadora)"
-        >
-          <Hand size={16} />
-          Mover Plano <kbd>Space</kbd>
-        </button>
-        <button 
-          className={`toolbar-btn ${snapToGrid ? 'active' : ''}`}
-          onClick={() => setSnapToGrid(!snapToGrid)}
-          title="Ajustar a Rejilla (Snap to Grid)"
-        >
-          <Magnet size={16} />
-          Imán (Snap)
-        </button>
-        {snapToGrid && (
+        {/* Grupo 1: Herramientas de Navegación del Cursor */}
+        <div className="toolbar-segmented-group">
           <button 
-            className={`toolbar-btn ${snapMode === 'relative' ? 'active' : ''}`}
-            onClick={() => setSnapMode(snapMode === 'relative' ? 'absolute' : 'relative')}
-            title={snapMode === 'relative' 
-              ? 'Modo Relativo: Mantiene distancias e intervalos entre elementos del grupo al mover' 
-              : 'Modo Absoluto: Colapsa / centra las imágenes al punto de ancla'}
-            style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+            className={`toolbar-btn icon-only ${activeTool === 'select' ? 'active' : ''}`}
+            onClick={() => setActiveTool('select')}
+            title="Herramienta de Selección (V / Esc)"
+            aria-label="Seleccionar"
           >
-            {snapMode === 'relative' ? '🧲 Relativo' : '🎯 Absoluto'}
+            <MousePointer size={15} />
           </button>
-        )}
-        <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+          <button 
+            className={`toolbar-btn icon-only ${activeTool === 'pan' ? 'active' : ''}`}
+            onClick={() => setActiveTool('pan')}
+            title="Mover Plano (Mantén presionada Barra Espaciadora)"
+            aria-label="Mover Plano"
+          >
+            <Hand size={15} />
+          </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Grupo 2: Imán (Snap) y Guías Magnéticas */}
+        <div className="toolbar-segmented-group">
+          <button 
+            className={`toolbar-btn icon-only ${snapToGrid ? 'active' : ''}`}
+            onClick={() => setSnapToGrid(!snapToGrid)}
+            title={`Ajustar a Rejilla: ${snapToGrid ? 'Activado' : 'Desactivado'}`}
+            aria-label="Imán Snap"
+          >
+            <Magnet size={15} />
+          </button>
+          {snapToGrid && (
+            <button 
+              className="toolbar-btn snap-mode-pill"
+              onClick={() => setSnapMode(snapMode === 'relative' ? 'absolute' : 'relative')}
+              title={snapMode === 'relative' 
+                ? 'Modo Relativo: Mantiene distancias relativas entre misiones seleccionadas al mover (Clic para Absoluto)' 
+                : 'Modo Absoluto: Encaja cada misión a la cuadrícula fija (Clic para Relativo)'}
+            >
+              {snapMode === 'relative' ? 'Rel' : 'Abs'}
+            </button>
+          )}
+          <button 
+            className={`toolbar-btn icon-only ${smartGuidesEnabled ? 'active' : ''}`}
+            onClick={() => {
+              const next = !smartGuidesEnabled;
+              setSmartGuidesEnabled(next);
+              localStorage.setItem('ftb_smart_guides', String(next));
+            }}
+            title={`Guías Magnéticas Inteligentes: ${smartGuidesEnabled ? 'Activadas' : 'Desactivadas'} (Alineación en tiempo real estilo Figma)`}
+            aria-label="Guías Magnéticas"
+          >
+            <span style={{ fontSize: '0.95rem' }}>📐</span>
+          </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Grupo 3: Portapapeles de Prefabs Anclados */}
         <button 
-          className={`toolbar-btn ${isPinnedDrawerOpen ? 'active' : ''}`}
+          className={`toolbar-btn ${pinnedCount > 0 ? 'with-badge' : 'icon-only'} ${isPinnedDrawerOpen ? 'active' : ''}`}
           onClick={() => setIsPinnedDrawerOpen(!isPinnedDrawerOpen)}
-          title="Ver elementos anclados en el portapapeles (Prefabs)"
+          title={`Prefabs Anclados en el Portapapeles (${pinnedCount} elementos)`}
+          aria-label="Prefabs Anclados"
         >
-          <span>📌</span> Anclados
+          <span style={{ fontSize: '0.95rem' }}>📌</span>
           {pinnedCount > 0 && (
-            <span style={{
-              background: isPinnedDrawerOpen ? 'rgba(17, 17, 27, 0.2)' : 'rgba(255,255,255,0.2)',
-              color: isPinnedDrawerOpen ? '#11111b' : 'inherit',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              padding: '1px 5px',
-              borderRadius: '8px',
-              marginLeft: '4px'
-            }}>{pinnedCount}</span>
+            <span className="toolbar-badge">{pinnedCount}</span>
           )}
         </button>
 
         {onAutoLayout && (
           <>
-            <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+            <div className="toolbar-divider" />
+            {/* Grupo 4: Auto-Organizar Árbol */}
             <div className="auto-layout-menu-wrapper" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
               <button
-                className={`toolbar-btn ${isAutoLayoutMenuOpen ? 'active' : ''}`}
+                className={`toolbar-btn compact ${isAutoLayoutMenuOpen ? 'active' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsAutoLayoutMenuOpen(!isAutoLayoutMenuOpen);
                 }}
-                style={{ gap: '6px' }}
-                title="Organizar árbol de misiones automáticamente según sus dependencias"
+                title="Organizar árbol automáticamente según dependencias"
+                aria-label="Auto-Organizar"
               >
-                <Sparkles size={15} style={{ color: isAutoLayoutMenuOpen ? '#ffffff' : 'var(--accent-color)' }} />
-                <span>Auto-Organizar</span>
-                <ChevronDown size={13} style={{ opacity: 0.7, transform: isAutoLayoutMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+                <Sparkles size={14} style={{ color: isAutoLayoutMenuOpen ? '#ffffff' : 'var(--accent-color)' }} />
+                <span className="toolbar-label-compact">Auto</span>
+                <ChevronDown size={12} style={{ opacity: 0.7, transform: isAutoLayoutMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
               </button>
 
               {isAutoLayoutMenuOpen && (() => {
@@ -605,7 +668,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
                 return (
                   <div 
-                    className="glass-panel"
+                    className="auto-layout-dropdown"
                     style={{
                       position: 'absolute',
                       top: 'calc(100% + 8px)',
@@ -658,7 +721,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       <>
                         <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', padding: '2px 6px', fontWeight: 600 }}>
-                          TODO EL CAPÍTULO
+                          TODO EL CAPÍTULO ({quests.length} misiones)
                         </div>
                         <button
                           className="btn btn-secondary"
@@ -692,20 +755,61 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             </div>
           </>
         )}
-        <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+
+        <div className="toolbar-divider" />
+
+        {/* Grupo 5: Estilo visual de cables */}
         <button
-          className={`toolbar-btn ${isSearchOpen ? 'active' : ''}`}
-          onClick={() => setIsSearchOpen(prev => !prev)}
-          title="Buscar misiones en el lienzo (Ctrl + F)"
-          style={{ gap: '6px' }}
+          className="toolbar-btn icon-only"
+          onClick={() => {
+            const nextStyle = connectionLineStyle === 'bezier' ? 'straight' : (connectionLineStyle === 'straight' ? 'orthogonal' : 'bezier');
+            setConnectionLineStyle(nextStyle);
+          }}
+          title={`Estilo visual de cables: ${connectionLineStyle === 'bezier' ? 'Curva Bezier' : (connectionLineStyle === 'straight' ? 'Recta Directa' : 'Ortogonal')} (Clic para alternar)`}
+          aria-label="Estilo de cables"
         >
-          <Search size={15} style={{ color: isSearchOpen ? '#ffffff' : 'var(--accent-color)' }} />
-          <span>Buscar</span>
-          <kbd style={{ fontSize: '0.68rem', padding: '1px 5px', background: 'rgba(255,255,255,0.12)', borderRadius: '4px' }}>Ctrl+F</kbd>
+          <span style={{ fontSize: '1rem', lineHeight: 1 }}>{connectionLineStyle === 'bezier' ? '〰️' : (connectionLineStyle === 'straight' ? '➔' : '⤷')}</span>
         </button>
+
+        <div className="toolbar-divider" />
+
+        {/* Grupo 6: Buscar y Reemplazar */}
+        <div className="toolbar-segmented-group">
+          <button
+            className={`toolbar-btn icon-only ${isSearchOpen && searchInitialMode === 'search' ? 'active' : ''}`}
+            onClick={() => {
+              if (isSearchOpen && searchInitialMode === 'search') {
+                setIsSearchOpen(false);
+              } else {
+                setSearchInitialMode('search');
+                setIsSearchOpen(true);
+              }
+            }}
+            title="Buscar misiones en el lienzo (Ctrl + F)"
+            aria-label="Buscar"
+          >
+            <Search size={14} style={{ color: (isSearchOpen && searchInitialMode === 'search') ? '#ffffff' : 'var(--accent-color)' }} />
+          </button>
+
+          <button
+            className={`toolbar-btn icon-only ${isSearchOpen && searchInitialMode === 'replace' ? 'active' : ''}`}
+            onClick={() => {
+              if (isSearchOpen && searchInitialMode === 'replace') {
+                setIsSearchOpen(false);
+              } else {
+                setSearchInitialMode('replace');
+                setIsSearchOpen(true);
+              }
+            }}
+            title="Búsqueda y Reemplazo Masivo (Ctrl + H)"
+            aria-label="Reemplazar"
+          >
+            <span style={{ fontSize: '0.85rem' }}>🔄</span>
+          </button>
+        </div>
       </div>
 
-      {/* Buscador Rápido en el Lienzo (Ctrl + F) */}
+      {/* Buscador y Reemplazo Rápido en el Lienzo (Ctrl + F / Ctrl + H) */}
       <QuestSearchBar
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
@@ -718,6 +822,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         activeIndex={activeMatchIndex}
         onNavigateMatch={handleNavigateMatch}
         onSelectQuest={(q) => centerOnQuest(q)}
+        initialMode={searchInitialMode}
+        totalOpenTabsCount={totalOpenTabsCount}
+        onBatchReplace={onBatchReplace}
+        onReplaceSingle={onReplaceSingle}
       />
 
       <Stage
@@ -1235,22 +1343,106 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   const endY = dstY - (dy / dist) * (dstRadius + 5);
 
                   const isCycleEdge = cycleNodeIds.has(q.id) && cycleNodeIds.has(depId);
-                  const arrowColor = isCycleEdge ? '#f38ba8' : '#57606f';
-                  const arrowWidth = isCycleEdge ? 3.5 : 2.5;
+                  const isDepSelected = selection.type === 'dependency' && 
+                    selection.dependency?.sourceId === depId && 
+                    selection.dependency?.targetId === q.id;
+                  const isHiddenInGame = q.hide_dependency_lines === true;
+
+                  let arrowColor = '#6c7086';
+                  let arrowWidth = 2.5;
+                  let opacity = 0.75;
+                  let dash: number[] | undefined = undefined;
+
+                  if (isDepSelected) {
+                    arrowColor = '#fbbf24';
+                    arrowWidth = 4.5;
+                    opacity = 1.0;
+                  } else if (isCycleEdge) {
+                    arrowColor = '#f38ba8';
+                    arrowWidth = 3.5;
+                    opacity = 0.95;
+                  } else if (isHiddenInGame) {
+                    arrowColor = '#9399b2';
+                    arrowWidth = 2.0;
+                    opacity = 0.45;
+                    dash = [5, 4];
+                  }
+
+                  // Calcular trayectoria según estilo de línea
+                  let points: number[] = [startX, startY, endX, endY];
+                  let useBezier = false;
+
+                  if (connectionLineStyle === 'bezier') {
+                    useBezier = true;
+                    const deltaX = endX - startX;
+                    const deltaY = endY - startY;
+                    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+                      const curvature = Math.max(Math.abs(deltaX) * 0.45, 30);
+                      const cp1X = startX + (deltaX >= 0 ? curvature : -curvature);
+                      const cp1Y = startY;
+                      const cp2X = endX - (deltaX >= 0 ? curvature : -curvature);
+                      const cp2Y = endY;
+                      points = [startX, startY, cp1X, cp1Y, cp2X, cp2Y, endX, endY];
+                    } else {
+                      const curvature = Math.max(Math.abs(deltaY) * 0.45, 30);
+                      const cp1X = startX;
+                      const cp1Y = startY + (deltaY >= 0 ? curvature : -curvature);
+                      const cp2X = endX;
+                      const cp2Y = endY - (deltaY >= 0 ? curvature : -curvature);
+                      points = [startX, startY, cp1X, cp1Y, cp2X, cp2Y, endX, endY];
+                    }
+                  } else if (connectionLineStyle === 'orthogonal') {
+                    const midX = (startX + endX) / 2;
+                    points = [startX, startY, midX, startY, midX, endY, endX, endY];
+                  }
 
                   return (
-                    <Arrow
-                      key={`${q.id}-dep-${depId}`}
-                      points={[startX, startY, endX, endY]}
-                      stroke={arrowColor}
-                      strokeWidth={arrowWidth}
-                      fill={arrowColor}
-                      pointerLength={9}
-                      pointerWidth={8}
-                      opacity={isCycleEdge ? 0.95 : 0.65}
-                      lineCap="round"
-                      lineJoin="round"
-                    />
+                    <Group key={`${q.id}-dep-${depId}`}>
+                      {/* Zona de impacto invisible para facilitar la selección al hacer clic */}
+                      <Arrow
+                        points={points}
+                        bezier={useBezier}
+                        stroke="transparent"
+                        strokeWidth={18 / stageScale}
+                        pointerLength={12 / stageScale}
+                        pointerWidth={10 / stageScale}
+                        onMouseEnter={(e) => {
+                          const stage = e.target.getStage();
+                          if (stage) stage.container().style.cursor = 'pointer';
+                        }}
+                        onMouseLeave={(e) => {
+                          const stage = e.target.getStage();
+                          if (stage) stage.container().style.cursor = 'default';
+                        }}
+                        onClick={(e) => {
+                          e.cancelBubble = true;
+                          setSelection({
+                            type: 'dependency',
+                            ids: [`${depId}->${q.id}`],
+                            items: [],
+                            dependency: { sourceId: depId, targetId: q.id }
+                          });
+                        }}
+                      />
+                      {/* Flecha visual */}
+                      <Arrow
+                        points={points}
+                        bezier={useBezier}
+                        stroke={arrowColor}
+                        strokeWidth={arrowWidth / stageScale}
+                        fill={arrowColor}
+                        pointerLength={isDepSelected ? 12 / stageScale : 9 / stageScale}
+                        pointerWidth={isDepSelected ? 10 / stageScale : 8 / stageScale}
+                        opacity={opacity}
+                        dash={dash}
+                        lineCap="round"
+                        lineJoin="round"
+                        shadowColor={isDepSelected ? '#fbbf24' : undefined}
+                        shadowBlur={isDepSelected ? 12 : undefined}
+                        shadowOpacity={isDepSelected ? 0.8 : undefined}
+                        listening={false}
+                      />
+                    </Group>
                   );
                 }
                 return null;
@@ -1334,7 +1526,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   onDragMove={(e) => {
                     const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                     if (isQSelected && selection.items.length > 1) {
-                      // Esta misión es la que se arrastra, por lo tanto actúa como la ancla del snap
+                      // Esta misión es la que se arrastra, actúa como el ancla del grupo
                       if (snapToGrid) {
                         const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
                         const x = e.target.x();
@@ -1343,12 +1535,51 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         const snappedY = Math.round(y / snapPixels) * snapPixels;
                         e.target.x(snappedX);
                         e.target.y(snappedY);
-                        setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
+                      }
+
+                      // Guías magnéticas inteligentes en multi-arrastre
+                      if (smartGuidesEnabled) {
+                        const selectedQuestIds = new Set(selection.items.filter(i => i.type === 'quest').map(i => i.id));
+                        const staticRects = quests
+                          .filter(item => !selectedQuestIds.has(item.id))
+                          .map(item => {
+                            const ix = getDValue(item.x) * SCALE_FACTOR;
+                            const iy = getDValue(item.y) * SCALE_FACTOR;
+                            const isz = (getDValue(item.size) || 1.0) * 40;
+                            return {
+                              id: item.id,
+                              left: ix - isz / 2,
+                              right: ix + isz / 2,
+                              top: iy - isz / 2,
+                              bottom: iy + isz / 2,
+                              centerX: ix,
+                              centerY: iy,
+                              width: isz,
+                              height: isz
+                            };
+                          });
+
+                        const snapRes = computeSmartSnapping(
+                          { x: e.target.x(), y: e.target.y() },
+                          { width: nodeSize, height: nodeSize },
+                          staticRects,
+                          7 / stageScale
+                        );
+
+                        if (snapRes.guides.length > 0) {
+                          e.target.x(snapRes.snappedX);
+                          e.target.y(snapRes.snappedY);
+                          setActiveGuides(snapRes.guides);
+                        } else {
+                          setActiveGuides([]);
+                        }
                       } else {
-                        setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
+                        setActiveGuides([]);
                       }
+
+                      setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
                     } else {
-                      // Comportamiento individual normal
+                      // Comportamiento individual
                       if (snapToGrid) {
                         const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
                         const x = e.target.x();
@@ -1358,6 +1589,46 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         e.target.x(snappedX);
                         e.target.y(snappedY);
                       }
+
+                      // Guías magnéticas inteligentes en arrastre individual
+                      if (smartGuidesEnabled) {
+                        const staticRects = quests
+                          .filter(item => item.id !== q.id)
+                          .map(item => {
+                            const ix = getDValue(item.x) * SCALE_FACTOR;
+                            const iy = getDValue(item.y) * SCALE_FACTOR;
+                            const isz = (getDValue(item.size) || 1.0) * 40;
+                            return {
+                              id: item.id,
+                              left: ix - isz / 2,
+                              right: ix + isz / 2,
+                              top: iy - isz / 2,
+                              bottom: iy + isz / 2,
+                              centerX: ix,
+                              centerY: iy,
+                              width: isz,
+                              height: isz
+                            };
+                          });
+
+                        const snapRes = computeSmartSnapping(
+                          { x: e.target.x(), y: e.target.y() },
+                          { width: nodeSize, height: nodeSize },
+                          staticRects,
+                          7 / stageScale
+                        );
+
+                        if (snapRes.guides.length > 0) {
+                          e.target.x(snapRes.snappedX);
+                          e.target.y(snapRes.snappedY);
+                          setActiveGuides(snapRes.guides);
+                        } else {
+                          setActiveGuides([]);
+                        }
+                      } else {
+                        setActiveGuides([]);
+                      }
+
                       if (dragStartPos) {
                         const deltaX = e.target.x() - dragStartPos.x;
                         const deltaY = e.target.y() - dragStartPos.y;
@@ -1366,6 +1637,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragEnd={(e) => {
+                    setActiveGuides([]);
                     if (dragStartPos) {
                       const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                       if (isQSelected && selection.items.length > 1) {
@@ -1589,6 +1861,61 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             </Layer>
           );
         })()}
+
+        {/* Guías Magnéticas Inteligentes (Smart Snapping Alignment Lines) */}
+        {activeGuides.length > 0 && (
+          <Layer listening={false}>
+            {activeGuides.map((guide) => {
+              if (guide.orientation === 'vertical') {
+                return (
+                  <Group key={guide.id}>
+                    <Line
+                      points={[guide.position, guide.start, guide.position, guide.end]}
+                      stroke="#ff2a85"
+                      strokeWidth={1.5 / stageScale}
+                      dash={[5 / stageScale, 4 / stageScale]}
+                    />
+                    <Circle
+                      x={guide.position}
+                      y={guide.start}
+                      radius={3.5 / stageScale}
+                      fill="#ff2a85"
+                    />
+                    <Circle
+                      x={guide.position}
+                      y={guide.end}
+                      radius={3.5 / stageScale}
+                      fill="#ff2a85"
+                    />
+                  </Group>
+                );
+              } else {
+                return (
+                  <Group key={guide.id}>
+                    <Line
+                      points={[guide.start, guide.position, guide.end, guide.position]}
+                      stroke="#ff2a85"
+                      strokeWidth={1.5 / stageScale}
+                      dash={[5 / stageScale, 4 / stageScale]}
+                    />
+                    <Circle
+                      x={guide.start}
+                      y={guide.position}
+                      radius={3.5 / stageScale}
+                      fill="#ff2a85"
+                    />
+                    <Circle
+                      x={guide.end}
+                      y={guide.position}
+                      radius={3.5 / stageScale}
+                      fill="#ff2a85"
+                    />
+                  </Group>
+                );
+              }
+            })}
+          </Layer>
+        )}
       </Stage>
 
       {/* Mini-mapa Interactivo (Radar / Navigator) */}

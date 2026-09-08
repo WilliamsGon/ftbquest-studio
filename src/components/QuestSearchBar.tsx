@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, ChevronUp, ChevronDown, List } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, List, Replace, Check, Layers, FileText } from 'lucide-react';
 
 export interface SearchMatch {
   quest: any;
   matchField: 'title' | 'id' | 'subtitle' | 'description' | 'task' | 'reward';
   matchDetail?: string;
+}
+
+export interface ReplaceFieldsConfig {
+  titles: boolean;
+  descriptions: boolean;
+  tasks: boolean;
+  rewards: boolean;
+  icons: boolean;
 }
 
 interface QuestSearchBarProps {
@@ -16,6 +24,15 @@ interface QuestSearchBarProps {
   activeIndex: number;
   onNavigateMatch: (index: number) => void;
   onSelectQuest?: (quest: any) => void;
+  initialMode?: 'search' | 'replace';
+  totalOpenTabsCount?: number;
+  onBatchReplace?: (
+    searchQuery: string,
+    replaceWith: string,
+    scope: 'current' | 'all',
+    fields: ReplaceFieldsConfig
+  ) => void;
+  onReplaceSingle?: (match: SearchMatch, replaceWith: string) => void;
 }
 
 export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
@@ -26,15 +43,32 @@ export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
   matches,
   activeIndex,
   onNavigateMatch,
-  onSelectQuest
+  onSelectQuest,
+  initialMode = 'search',
+  totalOpenTabsCount = 1,
+  onBatchReplace,
+  onReplaceSingle
 }) => {
+  const [activeTab, setActiveTab] = useState<'search' | 'replace'>(initialMode);
+  const [replaceText, setReplaceText] = useState('');
+  const [scope, setScope] = useState<'current' | 'all'>('current');
+  const [replaceFields, setReplaceFields] = useState<ReplaceFieldsConfig>({
+    titles: true,
+    descriptions: true,
+    tasks: true,
+    rewards: true,
+    icons: false
+  });
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Auto-enfocar el input cuando se abre el buscador
+  // Sincronizar modo inicial cuando se abre con Ctrl+F o Ctrl+H
   useEffect(() => {
     if (isOpen) {
+      setActiveTab(initialMode);
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -44,9 +78,8 @@ export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
     } else {
       setShowDropdown(false);
     }
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
-  // Si no está abierto, no renderizar
   if (!isOpen) return null;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -58,11 +91,9 @@ export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
       e.preventDefault();
       if (matches.length === 0) return;
       if (e.shiftKey) {
-        // Coincidencia anterior
         const prevIdx = activeIndex <= 0 ? matches.length - 1 : activeIndex - 1;
         onNavigateMatch(prevIdx);
       } else {
-        // Coincidencia siguiente
         const nextIdx = activeIndex >= matches.length - 1 ? 0 : activeIndex + 1;
         onNavigateMatch(nextIdx);
       }
@@ -95,6 +126,20 @@ export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
     onNavigateMatch(nextIdx);
   };
 
+  const handleExecuteReplaceSingle = () => {
+    if (!matches[activeIndex] || !query) return;
+    onReplaceSingle?.(matches[activeIndex], replaceText);
+  };
+
+  const handleExecuteReplaceAll = () => {
+    if (!query) return;
+    onBatchReplace?.(query, replaceText, scope, replaceFields);
+  };
+
+  const toggleField = (key: keyof ReplaceFieldsConfig) => {
+    setReplaceFields(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const getFieldBadgeLabel = (field: SearchMatch['matchField']) => {
     switch (field) {
       case 'title': return 'Título';
@@ -109,90 +154,236 @@ export const QuestSearchBar: React.FC<QuestSearchBarProps> = ({
 
   return (
     <div className="quest-search-container" onClick={(e) => e.stopPropagation()}>
-      <div className="quest-search-bar glass-panel">
-        <div className="quest-search-icon">
-          <Search size={16} />
-        </div>
-
-        <input
-          ref={inputRef}
-          type="text"
-          className="quest-search-input"
-          placeholder="Buscar misión (nombre, ID, tarea, item)..."
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-
-        {query.length > 0 && (
+      <div className={`quest-search-bar glass-panel ${activeTab === 'replace' ? 'replace-mode' : ''}`}>
+        {/* Cabecera de pestañas (Buscar / Reemplazar) */}
+        <div className="quest-search-tabs">
           <button
             type="button"
-            className="quest-search-btn-icon text-muted hover-light"
-            onClick={() => {
-              onQueryChange('');
-              inputRef.current?.focus();
-            }}
-            title="Borrar texto"
+            className={`quest-search-tab ${activeTab === 'search' ? 'active' : ''}`}
+            onClick={() => setActiveTab('search')}
           >
-            <X size={14} />
+            <Search size={13} />
+            <span>Buscar</span>
+            <kbd className="kbd-shortcut">Ctrl+F</kbd>
           </button>
-        )}
+          <button
+            type="button"
+            className={`quest-search-tab ${activeTab === 'replace' ? 'active' : ''}`}
+            onClick={() => setActiveTab('replace')}
+          >
+            <Replace size={13} />
+            <span>Reemplazar</span>
+            <kbd className="kbd-shortcut">Ctrl+H</kbd>
+          </button>
+        </div>
 
-        {/* Contador de resultados */}
-        {query.trim().length > 0 && (
-          <div className={`quest-search-counter ${matches.length === 0 ? 'no-matches' : ''}`}>
-            {matches.length === 0 ? (
-              '0 resultados'
-            ) : (
-              `${activeIndex + 1} de ${matches.length}`
-            )}
+        {/* Fila 1: Input de Búsqueda */}
+        <div className="quest-search-row">
+          <div className="quest-search-icon">
+            <Search size={15} />
+          </div>
+
+          <input
+            ref={inputRef}
+            type="text"
+            className="quest-search-input"
+            placeholder="Buscar texto, ítem, comando, ID..."
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+
+          {query.length > 0 && (
+            <button
+              type="button"
+              className="quest-search-btn-icon text-muted hover-light"
+              onClick={() => {
+                onQueryChange('');
+                inputRef.current?.focus();
+              }}
+              title="Borrar texto"
+            >
+              <X size={14} />
+            </button>
+          )}
+
+          {/* Contador de resultados */}
+          {query.trim().length > 0 && (
+            <div className={`quest-search-counter ${matches.length === 0 ? 'no-matches' : ''}`}>
+              {matches.length === 0 ? (
+                '0'
+              ) : (
+                `${activeIndex + 1}/${matches.length}`
+              )}
+            </div>
+          )}
+
+          <div className="quest-search-divider" />
+
+          {/* Botones de navegación Anterior / Siguiente */}
+          <button
+            type="button"
+            className="quest-search-btn-icon"
+            onClick={handlePrev}
+            disabled={matches.length === 0}
+            title="Misión anterior (Shift + Enter)"
+          >
+            <ChevronUp size={16} />
+          </button>
+
+          <button
+            type="button"
+            className="quest-search-btn-icon"
+            onClick={handleNext}
+            disabled={matches.length === 0}
+            title="Misión siguiente (Enter)"
+          >
+            <ChevronDown size={16} />
+          </button>
+
+          {/* Toggle para lista de coincidencias */}
+          <button
+            type="button"
+            className={`quest-search-btn-icon ${showDropdown ? 'active' : ''}`}
+            onClick={() => setShowDropdown(!showDropdown)}
+            disabled={matches.length === 0}
+            title="Ver lista de coincidencias"
+          >
+            <List size={16} />
+          </button>
+
+          {/* Botón cerrar */}
+          <button
+            type="button"
+            className="quest-search-btn-icon close-btn"
+            onClick={onClose}
+            title="Cerrar (Esc)"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Fila 2 (Solo Modo Reemplazo): Input de Reemplazo y Opciones */}
+        {activeTab === 'replace' && (
+          <div className="quest-replace-section">
+            <div className="quest-search-row">
+              <div className="quest-search-icon" style={{ color: '#cba6f7' }}>
+                <Replace size={15} />
+              </div>
+
+              <input
+                ref={replaceInputRef}
+                type="text"
+                className="quest-search-input"
+                placeholder="Reemplazar por..."
+                value={replaceText}
+                onChange={(e) => setReplaceText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.ctrlKey || e.metaKey) {
+                      handleExecuteReplaceAll();
+                    } else {
+                      handleExecuteReplaceSingle();
+                    }
+                  }
+                }}
+              />
+
+              <div className="quest-replace-buttons">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleExecuteReplaceSingle}
+                  disabled={matches.length === 0 || !query}
+                  title="Reemplazar la coincidencia activa (Enter)"
+                  style={{ padding: '3px 8px', fontSize: '0.75rem', height: '26px' }}
+                >
+                  Reemplazar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleExecuteReplaceAll}
+                  disabled={matches.length === 0 || !query}
+                  title="Reemplazar todas las ocurrencias (Ctrl + Enter)"
+                  style={{ padding: '3px 10px', fontSize: '0.75rem', height: '26px' }}
+                >
+                  Reemplazar Todo
+                </button>
+              </div>
+            </div>
+
+            {/* Opciones de Alcance y Filtro de Campos */}
+            <div className="quest-replace-options">
+              <div className="quest-replace-scope-group">
+                <span className="quest-replace-label">Alcance:</span>
+                <button
+                  type="button"
+                  className={`scope-pill ${scope === 'current' ? 'active' : ''}`}
+                  onClick={() => setScope('current')}
+                  title="Aplicar reemplazo solo al capítulo actual"
+                >
+                  <FileText size={11} /> Capítulo actual
+                </button>
+                {totalOpenTabsCount > 1 && (
+                  <button
+                    type="button"
+                    className={`scope-pill ${scope === 'all' ? 'active' : ''}`}
+                    onClick={() => setScope('all')}
+                    title={`Aplicar reemplazo a todos los ${totalOpenTabsCount} capítulos abiertos`}
+                  >
+                    <Layers size={11} /> Todas las pestañas ({totalOpenTabsCount})
+                  </button>
+                )}
+              </div>
+
+              <div className="quest-replace-fields-group">
+                <span className="quest-replace-label">En:</span>
+                <button
+                  type="button"
+                  className={`field-pill ${replaceFields.titles ? 'active' : ''}`}
+                  onClick={() => toggleField('titles')}
+                  title="Títulos y subtítulos"
+                >
+                  {replaceFields.titles && <Check size={10} />} Títulos
+                </button>
+                <button
+                  type="button"
+                  className={`field-pill ${replaceFields.descriptions ? 'active' : ''}`}
+                  onClick={() => toggleField('descriptions')}
+                  title="Líneas de descripción"
+                >
+                  {replaceFields.descriptions && <Check size={10} />} Descripciones
+                </button>
+                <button
+                  type="button"
+                  className={`field-pill ${replaceFields.tasks ? 'active' : ''}`}
+                  onClick={() => toggleField('tasks')}
+                  title="Ítems y nombres de tareas"
+                >
+                  {replaceFields.tasks && <Check size={10} />} Tareas
+                </button>
+                <button
+                  type="button"
+                  className={`field-pill ${replaceFields.rewards ? 'active' : ''}`}
+                  onClick={() => toggleField('rewards')}
+                  title="Ítems y comandos de recompensas"
+                >
+                  {replaceFields.rewards && <Check size={10} />} Recompensas
+                </button>
+                <button
+                  type="button"
+                  className={`field-pill ${replaceFields.icons ? 'active' : ''}`}
+                  onClick={() => toggleField('icons')}
+                  title="Iconos de misiones e imágenes de fondo"
+                >
+                  {replaceFields.icons && <Check size={10} />} Iconos
+                </button>
+              </div>
+            </div>
           </div>
         )}
-
-        {/* Separador vertical sutil */}
-        <div className="quest-search-divider" />
-
-        {/* Botones de navegación Anterior / Siguiente */}
-        <button
-          type="button"
-          className="quest-search-btn-icon"
-          onClick={handlePrev}
-          disabled={matches.length === 0}
-          title="Misión anterior (Shift + Enter)"
-        >
-          <ChevronUp size={16} />
-        </button>
-
-        <button
-          type="button"
-          className="quest-search-btn-icon"
-          onClick={handleNext}
-          disabled={matches.length === 0}
-          title="Misión siguiente (Enter)"
-        >
-          <ChevronDown size={16} />
-        </button>
-
-        {/* Toggle para lista de coincidencias */}
-        <button
-          type="button"
-          className={`quest-search-btn-icon ${showDropdown ? 'active' : ''}`}
-          onClick={() => setShowDropdown(!showDropdown)}
-          disabled={matches.length === 0}
-          title="Ver lista de coincidencias"
-        >
-          <List size={16} />
-        </button>
-
-        {/* Botón cerrar */}
-        <button
-          type="button"
-          className="quest-search-btn-icon close-btn"
-          onClick={onClose}
-          title="Cerrar buscador (Esc)"
-        >
-          <X size={16} />
-        </button>
       </div>
 
       {/* Lista desplegable de coincidencias */}

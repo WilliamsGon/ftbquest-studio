@@ -8,9 +8,10 @@ export interface ChapterTab {
   history: { quests: any[]; images: any[]; snbtData: any }[];
   historyIndex: number;
   selection: {
-    type: 'quest' | 'image' | 'mixed' | null;
+    type: 'quest' | 'image' | 'mixed' | 'dependency' | null;
     ids: (string | number)[];
     items: { type: 'quest' | 'image'; id: string | number }[];
+    dependency?: { sourceId: string; targetId: string } | null;
   };
   lockedKeys: string[];
   viewMode: 'map' | 'table';
