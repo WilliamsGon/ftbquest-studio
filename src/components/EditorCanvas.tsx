@@ -7,6 +7,7 @@ import { QuestShape } from './QuestShape';
 import { Minimap } from './Minimap';
 import { QuestSearchBar, type SearchMatch, type ReplaceFieldsConfig } from './QuestSearchBar';
 import { computeSmartSnapping, type AlignmentGuide } from '../utils/smartSnapping';
+import { stripMinecraftFormatting, getFirstMinecraftColor } from '../utils/minecraftText';
 
 interface CanvasProps {
   quests: any[];
@@ -1948,19 +1949,55 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   />
                   <FtbTexture icon={iconObj} width={nodeSize * 0.72} height={nodeSize * 0.72} />
                   
-                  <Text
-                    text={q.title || "Misión"}
-                    fill="white"
-                    fontSize={12 / stageScale}
-                    align="center"
-                    width={150}
-                    offsetX={75}
-                    y={nodeSize / 2 + 8}
-                    shadowColor="black"
-                    shadowBlur={2}
-                    shadowOffset={{x: 1, y: 1}}
-                    shadowOpacity={1}
-                  />
+                  {/* Título de la misión con soporte de color y formato limpio */}
+                  {(() => {
+                    const rawTitle = q.title || "Misión";
+                    const displayTitle = stripMinecraftFormatting(rawTitle);
+                    const titleColor = getFirstMinecraftColor(rawTitle) || 'white';
+                    return (
+                      <Text
+                        text={displayTitle}
+                        fill={titleColor}
+                        fontSize={12 / stageScale}
+                        align="center"
+                        width={150}
+                        offsetX={75}
+                        y={nodeSize / 2 + 8}
+                        shadowColor="black"
+                        shadowBlur={2}
+                        shadowOffset={{x: 1, y: 1}}
+                        shadowOpacity={1}
+                      />
+                    );
+                  })()}
+
+                  {/* Insignia de dependencias inter-capítulo */}
+                  {(() => {
+                    const qDeps = Array.isArray(q.dependencies)
+                      ? q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d))
+                      : (typeof q.dependencies === 'string' ? [q.dependencies] : []);
+                    const externalDepsCount = qDeps.filter((depId: string) => !quests.some((other: any) => other && other.id === depId)).length;
+
+                    if (externalDepsCount > 0 && !isPlayerMode) {
+                      return (
+                        <Group x={-nodeSize / 2 + 3} y={-nodeSize / 2 + 3} listening={false}>
+                          <Circle
+                            radius={7 / stageScale}
+                            fill="#7b61ff"
+                            stroke="#ffffff"
+                            strokeWidth={1 / stageScale}
+                          />
+                          <Text
+                            text="🌐"
+                            fontSize={7.5 / stageScale}
+                            offsetX={3.75 / stageScale}
+                            offsetY={3.75 / stageScale}
+                          />
+                        </Group>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {isLocked && !isPlayerMode && (
                     <Text

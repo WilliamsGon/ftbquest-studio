@@ -3,25 +3,32 @@ export interface GraphValidationResult {
   cycleNodeIds: Set<string>;
   brokenDeps: { questId: string; missingDepId: string }[];
   brokenDepQuestIds: Set<string>;
+  crossChapterDeps?: { questId: string; depId: string }[];
   isValid: boolean;
 }
 
 /**
  * Valida la integridad del grafo de misiones de FTB Quests:
  * - Detección de ciclos/bucles de dependencias (evita cuelgues en el juego)
- * - Detección de dependencias que apuntan a IDs inexistentes en el capítulo
+ * - Detección de dependencias que apuntan a IDs inexistentes
+ * - Reconocimiento de dependencias inter-capítulo válidas (cuando allKnownQuestIds está provisto)
  */
-export function validateQuestGraph(quests: any[]): GraphValidationResult {
+export function validateQuestGraph(
+  quests: any[],
+  allKnownQuestIds?: Set<string>
+): GraphValidationResult {
   const questIdSet = new Set<string>();
   const adj = new Map<string, string[]>(); // questId -> list of dependency questIds
 
-  quests.forEach(q => {
+  quests.forEach((q) => {
     if (q && q.id) {
       questIdSet.add(q.id);
-      
+
       let deps: string[] = [];
       if (Array.isArray(q.dependencies)) {
-        deps = q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
+        deps = q.dependencies.map((d: any) =>
+          typeof d === 'object' && d !== null ? d.id : String(d)
+        );
       } else if (typeof q.dependencies === 'string') {
         deps = [q.dependencies];
       } else if (typeof q.dependencies === 'object' && q.dependencies !== null && q.dependencies.id) {
@@ -33,13 +40,19 @@ export function validateQuestGraph(quests: any[]): GraphValidationResult {
 
   const brokenDeps: { questId: string; missingDepId: string }[] = [];
   const brokenDepQuestIds = new Set<string>();
+  const crossChapterDeps: { questId: string; depId: string }[] = [];
 
-  // 1. Detectar dependencias rotas
+  // 1. Detectar dependencias rotas vs dependencias inter-capítulo válidas
   adj.forEach((deps, qId) => {
-    deps.forEach(depId => {
+    deps.forEach((depId) => {
       if (!questIdSet.has(depId)) {
-        brokenDeps.push({ questId: qId, missingDepId: depId });
-        brokenDepQuestIds.add(qId);
+        // Verificar si la dependencia existe en otro capítulo abierto
+        if (allKnownQuestIds && allKnownQuestIds.has(depId)) {
+          crossChapterDeps.push({ questId: qId, depId });
+        } else {
+          brokenDeps.push({ questId: qId, missingDepId: depId });
+          brokenDepQuestIds.add(qId);
+        }
       }
     });
   });
@@ -65,7 +78,7 @@ export function validateQuestGraph(quests: any[]): GraphValidationResult {
         if (cycleStartIndex !== -1) {
           const cyclePath = path.slice(cycleStartIndex).concat(v);
           cycles.push(cyclePath);
-          cyclePath.forEach(id => cycleNodeIds.add(id));
+          cyclePath.forEach((id) => cycleNodeIds.add(id));
         }
       } else if (vState === 0) {
         parent.set(v, u);
@@ -77,7 +90,7 @@ export function validateQuestGraph(quests: any[]): GraphValidationResult {
     state.set(u, 2);
   };
 
-  questIdSet.forEach(qId => {
+  questIdSet.forEach((qId) => {
     if ((state.get(qId) ?? 0) === 0) {
       dfs(qId, []);
     }
@@ -88,6 +101,7 @@ export function validateQuestGraph(quests: any[]): GraphValidationResult {
     cycleNodeIds,
     brokenDeps,
     brokenDepQuestIds,
-    isValid: cycles.length === 0 && brokenDeps.length === 0
+    crossChapterDeps,
+    isValid: cycles.length === 0 && brokenDeps.length === 0,
   };
 }

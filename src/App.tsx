@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin, Globe, ExternalLink } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { validateQuestGraph } from './utils/graphValidation';
 import { computeAutoLayout } from './utils/autoLayout';
@@ -14,6 +14,11 @@ import type { ChapterTab } from './types/chapter';
 import { RewardTableModal } from './components/RewardTableModal';
 import type { RewardTable } from './types/rewardTable';
 import { exportModpackToZip } from './utils/zipExporter';
+import { MinecraftTextToolbar } from './components/MinecraftTextToolbar';
+import { MinecraftFormattedPreview } from './components/MinecraftFormattedPreview';
+import { CrossChapterDependencyModal } from './components/CrossChapterDependencyModal';
+import { QuestItemThumbnail } from './utils/textureHelper';
+import { parseMinecraftText } from './utils/minecraftText';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -154,6 +159,12 @@ function App() {
     ];
   });
   const [isRewardTableModalOpen, setIsRewardTableModalOpen] = useState<boolean>(false);
+  const [isCrossChapterModalOpen, setIsCrossChapterModalOpen] = useState<boolean>(false);
+
+  // Referencias para manipulación de cursor/selección en barras de formato de texto Minecraft
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
+  const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Modo Vista Jugador (Simulación de desbloqueo en tiempo real)
   const [isPlayerMode, setIsPlayerMode] = useState<boolean>(false);
@@ -174,8 +185,51 @@ function App() {
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const [lockedKeys, setLockedKeys] = useState<string[]>([]);
 
-  // Validación de grafos de dependencias en tiempo real
-  const graphValidation = useMemo(() => validateQuestGraph(quests), [quests]);
+  // Índice global de misiones de todos los capítulos cargados para dependencias inter-capítulo
+  const allChaptersQuestsMap = useMemo(() => {
+    const map = new Map<string, { quest: any; chapterId: string; chapterTitle: string; tabId: string }>();
+
+    // 1. Misiones de todas las pestañas abiertas
+    tabs.forEach(tab => {
+      const chTitle = tab.title || (tab.snbtData?.title ? getDValue(tab.snbtData.title) : tab.filename.replace(/\.snbt$/, ''));
+      if (Array.isArray(tab.quests)) {
+        tab.quests.forEach(q => {
+          if (q && q.id) {
+            map.set(String(q.id), {
+              quest: q,
+              chapterId: tab.id,
+              chapterTitle: String(chTitle),
+              tabId: tab.id
+            });
+          }
+        });
+      }
+    });
+
+    // 2. Misiones actuales de la pestaña activa en edición
+    if (activeTabId) {
+      const currentTitle = snbtData?.title ? getDValue(snbtData.title) : filename.replace(/\.snbt$/, '');
+      quests.forEach(q => {
+        if (q && q.id) {
+          map.set(String(q.id), {
+            quest: q,
+            chapterId: activeTabId,
+            chapterTitle: String(currentTitle),
+            tabId: activeTabId
+          });
+        }
+      });
+    }
+
+    return map;
+  }, [tabs, quests, activeTabId, snbtData, filename]);
+
+  const allKnownQuestIds = useMemo(() => {
+    return new Set(allChaptersQuestsMap.keys());
+  }, [allChaptersQuestsMap]);
+
+  // Validación de grafos de dependencias en tiempo real (reconociendo dependencias inter-capítulo)
+  const graphValidation = useMemo(() => validateQuestGraph(quests, allKnownQuestIds), [quests, allKnownQuestIds]);
 
   const [pinnedAssets, setPinnedAssets] = useState<any[]>(() => {
     try {
@@ -4070,8 +4124,25 @@ function App() {
                   <input type="text" className="input-field" readOnly value={selection.id as string} />
                 </div>
                 <div className="input-group">
-                  <label>Título</label>
-                  <input type="text" className="input-field" 
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <label style={{ margin: 0 }}>Título</label>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Minecraft (&6, &a, &l...)</span>
+                  </div>
+                  <MinecraftTextToolbar
+                    targetRef={titleInputRef}
+                    value={String(getDValue(selectedQuest.title) ?? '')}
+                    onChange={(val) => {
+                      if (typeof selectedQuest.title === 'object' && selectedQuest.title !== null) {
+                        updateQuest(selection.id as string, { title: { ...selectedQuest.title, value: val } });
+                      } else {
+                        updateQuest(selection.id as string, { title: val });
+                      }
+                    }}
+                  />
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    className="input-field" 
                     value={getDValue(selectedQuest.title) ?? ''} 
                     onChange={(e) => {
                       const val = e.target.value;
@@ -4082,7 +4153,45 @@ function App() {
                       }
                     }}
                   />
+                  <MinecraftFormattedPreview
+                    text={String(getDValue(selectedQuest.title) ?? '')}
+                    label="Vista Previa Título"
+                    defaultColor="#FFFFFF"
+                  />
                 </div>
+
+                <div className="input-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <label style={{ margin: 0 }}>Subtítulo</label>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Opcional</span>
+                  </div>
+                  <MinecraftTextToolbar
+                    targetRef={subtitleInputRef}
+                    value={String(selectedQuest.subtitle ?? '')}
+                    onChange={(val) => {
+                      updateQuest(selection.id as string, { subtitle: val ? val : undefined });
+                    }}
+                  />
+                  <input
+                    ref={subtitleInputRef}
+                    type="text"
+                    className="input-field"
+                    placeholder="Texto secundario o pista de la misión..."
+                    value={String(selectedQuest.subtitle ?? '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateQuest(selection.id as string, { subtitle: val ? val : undefined });
+                    }}
+                  />
+                  {selectedQuest.subtitle && (
+                    <MinecraftFormattedPreview
+                      text={String(selectedQuest.subtitle)}
+                      label="Vista Previa Subtítulo"
+                      defaultColor="#AAAAAA"
+                    />
+                  )}
+                </div>
+
                 <div className="input-group">
                   <label>Ícono (Item/Ruta)</label>
                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -4120,11 +4229,30 @@ function App() {
                     }}><Settings size={16} /></button>
                   </div>
                 </div>
+
                 <div className="input-group">
-                  <label>Descripción</label>
-                  <textarea className="input-field" rows={3}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <label style={{ margin: 0 }}>Descripción</label>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Multilínea (Lore)</span>
+                  </div>
+                  <MinecraftTextToolbar
+                    targetRef={descriptionTextareaRef}
+                    value={(selectedQuest.description || []).join('\n')}
+                    onChange={(val) => {
+                      updateQuest(selection.id as string, { description: val.split('\n') });
+                    }}
+                  />
+                  <textarea
+                    ref={descriptionTextareaRef}
+                    className="input-field"
+                    rows={3}
                     value={(selectedQuest.description || []).join('\n')}
                     onChange={(e) => updateQuest(selection.id as string, { description: e.target.value.split('\n') })}
+                  />
+                  <MinecraftFormattedPreview
+                    text={selectedQuest.description || []}
+                    label="Vista Previa Descripción"
+                    defaultColor="#FFFFFF"
                   />
                 </div>
                 <div className="row">
@@ -4204,7 +4332,15 @@ function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
                       {normalizedDeps.map((depId: string) => {
                         const depQuest = quests.find(q => q && q.id === depId);
-                        const depTitle = depQuest ? String(getDValue(depQuest.title) || depQuest.id) : depId;
+                        const externalInfo = allChaptersQuestsMap.get(depId);
+                        const isCrossChapter = !depQuest && !!externalInfo;
+                        const isUnknown = !depQuest && !externalInfo;
+
+                        const depTitle = depQuest 
+                          ? String(getDValue(depQuest.title) || depQuest.id)
+                          : (externalInfo ? String(getDValue(externalInfo.quest.title) || depId) : depId);
+                        const depIcon = depQuest ? depQuest.icon : (externalInfo ? externalInfo.quest.icon : undefined);
+
                         return (
                           <div 
                             key={depId} 
@@ -4212,36 +4348,71 @@ function App() {
                               display: 'flex', 
                               justifyContent: 'space-between', 
                               alignItems: 'center', 
-                              background: 'rgba(255,255,255,0.02)', 
+                              background: isCrossChapter ? 'rgba(123, 97, 255, 0.08)' : (isUnknown ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.02)'), 
                               padding: '6px 10px', 
-                              borderRadius: '4px',
-                              border: '1px solid rgba(255,255,255,0.05)'
+                              borderRadius: '6px',
+                              border: isCrossChapter ? '1px solid rgba(123, 97, 255, 0.28)' : (isUnknown ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(255,255,255,0.05)'),
+                              gap: '8px',
                             }}
                           >
-                            <span 
-                              style={{ fontSize: '0.8rem', color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '200px' }}
-                              title={depQuest ? `${depTitle} (${depId})` : depId}
-                            >
-                              🔗 {depTitle}
-                            </span>
-                            <button 
-                              className="btn-icon" 
-                              style={{ color: 'var(--danger-color)', padding: '2px' }}
-                              onClick={() => {
-                                const nextDeps = normalizedDeps.filter((id: string) => id !== depId);
-                                const updatedQuest = {
-                                  ...selectedQuest,
-                                  dependencies: nextDeps.length > 0 ? nextDeps : undefined
-                                };
-                                if (updatedQuest.dependencies === undefined) {
-                                  delete updatedQuest.dependencies;
-                                }
-                                updateQuest(selectedQuest.id, updatedQuest);
-                              }}
-                              title="Eliminar dependencia"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                              <QuestItemThumbnail icon={depIcon} size={22} />
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div 
+                                  style={{ fontSize: '0.8rem', color: isCrossChapter ? '#c4b5fd' : (isUnknown ? '#fbbf24' : 'var(--text-primary)'), textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}
+                                  title={`${depTitle} (${depId})`}
+                                >
+                                  {isCrossChapter && <span style={{ marginRight: '4px' }}>🌐</span>}
+                                  {isUnknown && <span style={{ marginRight: '4px' }}>⚠️</span>}
+                                  {!isCrossChapter && !isUnknown && <span style={{ marginRight: '4px' }}>🔗</span>}
+                                  {parseMinecraftText(depTitle)}
+                                </div>
+                                {isCrossChapter && (
+                                  <div style={{ fontSize: '0.67rem', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>Capítulo: {externalInfo.chapterTitle}</span>
+                                  </div>
+                                )}
+                                {isUnknown && (
+                                  <div style={{ fontSize: '0.67rem', color: '#f59e0b' }}>
+                                    ID externo: {depId}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {isCrossChapter && (
+                                <button
+                                  className="btn-icon"
+                                  style={{ color: '#a78bfa', padding: '3px' }}
+                                  onClick={() => {
+                                    handleSelectTab(externalInfo.tabId);
+                                    setSelection({ type: 'quest', ids: [depId], items: [{ type: 'quest', id: depId }] });
+                                  }}
+                                  title={`Ir al capítulo "${externalInfo.chapterTitle}" y seleccionar esta misión`}
+                                >
+                                  <ExternalLink size={13} />
+                                </button>
+                              )}
+                              <button 
+                                className="btn-icon" 
+                                style={{ color: 'var(--danger-color)', padding: '3px' }}
+                                onClick={() => {
+                                  const nextDeps = normalizedDeps.filter((id: string) => id !== depId);
+                                  const updatedQuest = {
+                                    ...selectedQuest,
+                                    dependencies: nextDeps.length > 0 ? nextDeps : undefined
+                                  };
+                                  if (updatedQuest.dependencies === undefined) {
+                                    delete updatedQuest.dependencies;
+                                  }
+                                  updateQuest(selectedQuest.id, updatedQuest);
+                                }}
+                                title="Eliminar dependencia"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -4256,7 +4427,7 @@ function App() {
                         style={{ fontSize: '0.8rem', height: '32px', flexGrow: 1 }}
                         defaultValue=""
                       >
-                        <option value="" disabled>Añadir requisito...</option>
+                        <option value="" disabled>Añadir requisito local...</option>
                         {availableQuestsToAdd.map(q => (
                           <option key={q.id} value={q.id}>
                             {String(getDValue(q.title) || q.id)}
@@ -4280,6 +4451,29 @@ function App() {
                       </button>
                     </div>
                   )}
+
+                  {/* Botón para vincular dependencia de otro capítulo */}
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      fontSize: '0.76rem',
+                      marginTop: '6px',
+                      padding: '6px 10px',
+                      background: 'rgba(123, 97, 255, 0.12)',
+                      border: '1px solid rgba(123, 97, 255, 0.28)',
+                      color: '#c4b5fd',
+                    }}
+                    onClick={() => setIsCrossChapterModalOpen(true)}
+                  >
+                    <Globe size={13} />
+                    <span>Vincular Prerrequisito de Otro Capítulo...</span>
+                  </button>
 
                   {/* Configuración avanzada de dependencias de la misión */}
                   {normalizedDeps.length > 0 && (
@@ -4466,6 +4660,33 @@ function App() {
         })}
       />
     )}
+
+    {isCrossChapterModalOpen && selection.type === 'quest' && selection.id && (() => {
+      const curQuest = quests.find(q => q && q.id === selection.id);
+      if (!curQuest) return null;
+      const deps = Array.isArray(curQuest.dependencies)
+        ? curQuest.dependencies
+        : (curQuest.dependencies ? [curQuest.dependencies] : []);
+      const normalizedCurrentDeps = deps.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
+
+      return (
+        <CrossChapterDependencyModal
+          isOpen={isCrossChapterModalOpen}
+          onClose={() => setIsCrossChapterModalOpen(false)}
+          currentChapterId={activeTabId}
+          currentQuestId={String(curQuest.id)}
+          existingDependencyIds={normalizedCurrentDeps}
+          tabs={tabs}
+          onAddDependency={(questId, chapterTitle, questTitle) => {
+            if (!normalizedCurrentDeps.includes(questId)) {
+              const nextDeps = [...normalizedCurrentDeps, questId];
+              updateQuest(curQuest.id, { dependencies: nextDeps });
+              showToast(`Conectado con "${questTitle}" (${chapterTitle})`, 'success');
+            }
+          }}
+        />
+      );
+    })()}
 
     {contextMenu.visible && (
       <div 
