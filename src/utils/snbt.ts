@@ -138,6 +138,7 @@ export function stringifySNBT(obj: any, indentLevel = 0): string {
     const keys = Object.keys(obj);
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
+      if (key.startsWith('_')) continue;
       const val = obj[key];
       if (val === undefined) continue;
       

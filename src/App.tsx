@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2 } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
+import { validateQuestGraph } from './utils/graphValidation';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
 import { TableView } from './components/TableView';
+import { TexturePickerModal } from './components/TexturePickerModal';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -121,6 +123,10 @@ function App() {
   const [visibleZLevels, setVisibleZLevels] = useState<number[]>([]);
   const prevAvailableZLevelsRef = useRef<number[]>([]);
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
+  const [lockedKeys, setLockedKeys] = useState<string[]>([]);
+
+  // Validación de grafos de dependencias en tiempo real
+  const graphValidation = useMemo(() => validateQuestGraph(quests), [quests]);
 
   const [pinnedAssets, setPinnedAssets] = useState<any[]>(() => {
     try {
@@ -280,6 +286,7 @@ function App() {
   }, [quests, images, selection]);
 
   const [nbtEditor, setNbtEditor] = useState<{ title: string; value: string; onSave: (val: any) => void } | null>(null);
+  const [texturePicker, setTexturePicker] = useState<{ isOpen: boolean; targetType: 'icon' | 'image'; onSelect: (val: string) => void; title: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -485,7 +492,127 @@ function App() {
     }
   };
 
-  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C, Ctrl+V)
+  const toggleLock = (key: string) => {
+    setLockedKeys(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const toggleLockSelected = () => {
+    if (selection.items.length === 0) return;
+    const keysToToggle = selection.items.map(item => 
+      item.type === 'quest' ? `quest-${item.id}` : `img-${item.id}`
+    );
+    
+    const allLocked = keysToToggle.every(k => lockedKeys.includes(k));
+    if (allLocked) {
+      setLockedKeys(prev => prev.filter(k => !keysToToggle.includes(k)));
+      showToast('Elementos desbloqueados', 'info');
+    } else {
+      setLockedKeys(prev => Array.from(new Set([...prev, ...keysToToggle])));
+      showToast('Elementos bloqueados', 'info');
+    }
+  };
+
+  const duplicateSelection = () => {
+    const currentSelection = selectionRef.current;
+    const currentQuests = questsRef.current;
+    const currentImages = imagesRef.current;
+
+    if (currentSelection.items.length === 0) return;
+
+    const newlyCreatedItems: { type: 'quest' | 'image'; id: string | number }[] = [];
+    const nextQuests = [...currentQuests];
+    const nextImages = [...currentImages];
+
+    const offset = 0.5;
+
+    // Mapa de ID viejo -> ID nuevo para remapear dependencias internas
+    const questIdMap = new Map<string, string>();
+    const selectedQuests = currentSelection.items
+      .filter(item => item.type === 'quest')
+      .map(item => currentQuests.find(q => q.id === item.id))
+      .filter(Boolean);
+
+    selectedQuests.forEach(q => {
+      let newId = generateHexId();
+      while (nextQuests.some(qi => qi.id === newId) || Array.from(questIdMap.values()).includes(newId)) {
+        newId = generateHexId();
+      }
+      questIdMap.set(q.id, newId);
+    });
+
+    // Duplicar misiones seleccionadas
+    selectedQuests.forEach(q => {
+      const newId = questIdMap.get(q.id)!;
+      const cloned = JSON.parse(JSON.stringify(q));
+      const origX = getDValue(cloned.x) ?? 0;
+      const origY = getDValue(cloned.y) ?? 0;
+
+      cloned.id = newId;
+      cloned.x = { __type: 'number', value: Math.round((origX + offset) * 1000) / 1000, suffix: 'd' };
+      cloned.y = { __type: 'number', value: Math.round((origY + offset) * 1000) / 1000, suffix: 'd' };
+
+      // Remapear dependencias internas si ambas misiones fueron duplicadas
+      if (cloned.dependencies) {
+        if (Array.isArray(cloned.dependencies)) {
+          cloned.dependencies = cloned.dependencies.map((dep: any) => {
+            const depId = typeof dep === 'object' && dep !== null ? dep.id : String(dep);
+            if (questIdMap.has(depId)) {
+              const mappedId = questIdMap.get(depId)!;
+              return typeof dep === 'object' && dep !== null ? { ...dep, id: mappedId } : mappedId;
+            }
+            return dep;
+          });
+        } else if (typeof cloned.dependencies === 'string' && questIdMap.has(cloned.dependencies)) {
+          cloned.dependencies = questIdMap.get(cloned.dependencies)!;
+        } else if (typeof cloned.dependencies === 'object' && cloned.dependencies !== null && questIdMap.has(cloned.dependencies.id)) {
+          cloned.dependencies = { ...cloned.dependencies, id: questIdMap.get(cloned.dependencies.id)! };
+        }
+      }
+
+      nextQuests.push(cloned);
+      newlyCreatedItems.push({ type: 'quest', id: newId });
+    });
+
+    // Duplicar imágenes seleccionadas
+    const selectedImages = currentSelection.items
+      .filter(item => item.type === 'image')
+      .map(item => currentImages[item.id as number])
+      .filter(Boolean);
+
+    selectedImages.forEach(img => {
+      const cloned = JSON.parse(JSON.stringify(img));
+      const origX = getDValue(cloned.x) ?? 0;
+      const origY = getDValue(cloned.y) ?? 0;
+
+      cloned.x = { __type: 'number', value: Math.round((origX + offset) * 1000) / 1000, suffix: 'd' };
+      cloned.y = { __type: 'number', value: Math.round((origY + offset) * 1000) / 1000, suffix: 'd' };
+
+      const newIndex = nextImages.length;
+      nextImages.push(cloned);
+      newlyCreatedItems.push({ type: 'image', id: newIndex });
+    });
+
+    updateState(nextQuests, nextImages);
+
+    if (newlyCreatedItems.length > 0) {
+      const hasQuests = newlyCreatedItems.some(i => i.type === 'quest');
+      const hasImages = newlyCreatedItems.some(i => i.type === 'image');
+      let type: 'quest' | 'image' | 'mixed' = 'mixed';
+      if (hasQuests && !hasImages) type = 'quest';
+      if (!hasQuests && hasImages) type = 'image';
+
+      setSelection({
+        type,
+        ids: newlyCreatedItems.map(i => i.id),
+        items: newlyCreatedItems
+      });
+      showToast(`${newlyCreatedItems.length} elemento(s) duplicado(s)`, 'success');
+    }
+  };
+
+  // Event listener para atajos de teclado globales (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+C, Ctrl+V, Ctrl+D)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -510,6 +637,9 @@ function App() {
         } else if (e.key === 'v' || e.key === 'V') {
           e.preventDefault();
           pasteFromClipboard();
+        } else if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          duplicateSelection();
         }
       }
     };
@@ -965,6 +1095,28 @@ function App() {
     });
   };
 
+  const handleConnectQuests = (sourceId: string, targetId: string) => {
+    const targetQ = quests.find(q => q.id === targetId);
+    if (!targetQ) return;
+
+    const currentDeps = Array.isArray(targetQ.dependencies)
+      ? [...targetQ.dependencies]
+      : (targetQ.dependencies ? [targetQ.dependencies] : []);
+
+    const normalizedDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
+
+    let newDeps: any[];
+    if (normalizedDeps.includes(sourceId)) {
+      newDeps = currentDeps.filter(d => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
+      showToast(`Dependencia eliminada: ${sourceId} ➔ ${targetId}`, 'info');
+    } else {
+      newDeps = [...currentDeps, sourceId];
+      showToast(`Dependencia creada: ${sourceId} ➔ ${targetId}`, 'success');
+    }
+
+    updateQuest(targetId, { dependencies: newDeps.length > 0 ? newDeps : undefined });
+  };
+
   const makeSelectedDependOnTarget = () => {
     if (!contextMenu.targetQuestId) return;
     const targetId = contextMenu.targetQuestId;
@@ -1307,6 +1459,129 @@ function App() {
     updateState(newQuests, newImages);
   };
 
+  const distributeSelectedItems = (axis: 'horizontal' | 'vertical') => {
+    if (selection.items.length < 3) return;
+
+    const boundsList = selection.items.map(item => {
+      let x = 0;
+      let y = 0;
+      let w = 1.0;
+      let h = 1.0;
+
+      if (item.type === 'quest') {
+        const q = quests.find(qi => qi.id === item.id);
+        if (q) {
+          x = getDValue(q.x) ?? 0;
+          y = getDValue(q.y) ?? 0;
+          const sizeVal = getDValue(q.size) ?? 1.0;
+          w = sizeVal;
+          h = sizeVal;
+        }
+      } else {
+        const img = images[item.id as number];
+        if (img) {
+          x = getDValue(img.x) ?? 0;
+          y = getDValue(img.y) ?? 0;
+          w = getDValue(img.width) ?? 2.0;
+          h = getDValue(img.height) ?? 2.0;
+        }
+      }
+
+      return {
+        type: item.type,
+        id: item.id,
+        x,
+        y,
+        w,
+        h
+      };
+    });
+
+    if (axis === 'horizontal') {
+      boundsList.sort((a, b) => a.x - b.x);
+      const firstX = boundsList[0].x;
+      const lastX = boundsList[boundsList.length - 1].x;
+      const span = lastX - firstX;
+      if (Math.abs(span) < 0.001) return;
+      const step = span / (boundsList.length - 1);
+
+      const questUpdates: { id: string; updates: any }[] = [];
+      const imageUpdates: { index: number; updates: any }[] = [];
+
+      boundsList.forEach((b, index) => {
+        const targetX = Math.round((firstX + index * step) * 1000) / 1000;
+        const updates = { x: targetX };
+        if (b.type === 'quest') {
+          questUpdates.push({ id: b.id as string, updates });
+        } else {
+          imageUpdates.push({ index: b.id as number, updates });
+        }
+      });
+
+      const newQuests = quests.map(q => {
+        const found = questUpdates.find(u => u.id === q.id);
+        if (found) {
+          return {
+            ...q,
+            x: { __type: 'number', value: found.updates.x, suffix: 'd' }
+          };
+        }
+        return q;
+      });
+
+      const newImages = JSON.parse(JSON.stringify(images));
+      imageUpdates.forEach(u => {
+        if (newImages[u.index]) {
+          newImages[u.index].x = { __type: 'number', value: u.updates.x, suffix: 'd' };
+        }
+      });
+
+      updateState(newQuests, newImages);
+      showToast('Elementos distribuidos horizontalmente', 'success');
+    } else {
+      boundsList.sort((a, b) => a.y - b.y);
+      const firstY = boundsList[0].y;
+      const lastY = boundsList[boundsList.length - 1].y;
+      const span = lastY - firstY;
+      if (Math.abs(span) < 0.001) return;
+      const step = span / (boundsList.length - 1);
+
+      const questUpdates: { id: string; updates: any }[] = [];
+      const imageUpdates: { index: number; updates: any }[] = [];
+
+      boundsList.forEach((b, index) => {
+        const targetY = Math.round((firstY + index * step) * 1000) / 1000;
+        const updates = { y: targetY };
+        if (b.type === 'quest') {
+          questUpdates.push({ id: b.id as string, updates });
+        } else {
+          imageUpdates.push({ index: b.id as number, updates });
+        }
+      });
+
+      const newQuests = quests.map(q => {
+        const found = questUpdates.find(u => u.id === q.id);
+        if (found) {
+          return {
+            ...q,
+            y: { __type: 'number', value: found.updates.y, suffix: 'd' }
+          };
+        }
+        return q;
+      });
+
+      const newImages = JSON.parse(JSON.stringify(images));
+      imageUpdates.forEach(u => {
+        if (newImages[u.index]) {
+          newImages[u.index].y = { __type: 'number', value: u.updates.y, suffix: 'd' };
+        }
+      });
+
+      updateState(newQuests, newImages);
+      showToast('Elementos distribuidos verticalmente', 'success');
+    }
+  };
+
   const updateSelectedCoordinates = (axis: 'x' | 'y', val: number) => {
     if (isNaN(val)) return;
     
@@ -1408,6 +1683,28 @@ function App() {
               >
                 Rehacer
               </button>
+            </div>
+          )}
+
+          {snbtData && !graphValidation.isValid && (
+            <div style={{
+              background: 'rgba(243, 139, 168, 0.15)',
+              border: '1px solid #f38ba8',
+              borderRadius: '8px',
+              padding: '10px',
+              marginTop: '10px',
+              fontSize: '0.78rem',
+              color: '#f38ba8'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', marginBottom: '4px' }}>
+                <AlertTriangle size={15} /> Problemas en el Grafo
+              </div>
+              {graphValidation.cycles.length > 0 && (
+                <div>⚠️ {graphValidation.cycles.length} ciclo(s) de dependencia detectado(s).</div>
+              )}
+              {graphValidation.brokenDeps.length > 0 && (
+                <div>❓ {graphValidation.brokenDeps.length} dependencia(s) rotas/inexistentes.</div>
+              )}
             </div>
           )}
         </div>
@@ -1535,6 +1832,10 @@ function App() {
             setSnapToGrid={setSnapToGrid}
             snapMode={snapMode}
             setSnapMode={setSnapMode}
+            lockedKeys={lockedKeys}
+            onConnectQuests={handleConnectQuests}
+            cycleNodeIds={graphValidation.cycleNodeIds}
+            brokenDepQuestIds={graphValidation.brokenDepQuestIds}
           />
 
           {/* Cajón deslizable (Drawer) del Portapapeles */}
@@ -1664,6 +1965,52 @@ function App() {
                 </button>
               </div>
 
+              {/* Botones de Distribución Equidistante */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }} 
+                  onClick={() => distributeSelectedItems('horizontal')} 
+                  disabled={selection.items.length < 3}
+                  title={selection.items.length < 3 ? "Selecciona al menos 3 elementos para distribuir" : "Distribuir horizontalmente con espaciado uniforme"}
+                >
+                  <AlignHorizontalDistributeCenter size={16} /> Distribuir X
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }} 
+                  onClick={() => distributeSelectedItems('vertical')} 
+                  disabled={selection.items.length < 3}
+                  title={selection.items.length < 3 ? "Selecciona al menos 3 elementos para distribuir" : "Distribuir verticalmente con espaciado uniforme"}
+                >
+                  <AlignVerticalDistributeCenter size={16} /> Distribuir Y
+                </button>
+              </div>
+
+              {/* Botones de acción rápida en lote: Duplicar y Bloquear */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
+                  onClick={duplicateSelection}
+                  title="Duplicar selección (Ctrl+D)"
+                >
+                  <Copy size={15} /> Duplicar
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
+                  onClick={toggleLockSelected}
+                  title="Bloquear / Desbloquear selección para evitar movimientos accidentales"
+                >
+                  {selection.items.every(item => lockedKeys.includes(item.type === 'quest' ? `quest-${item.id}` : `img-${item.id}`)) ? (
+                    <><Unlock size={15} /> Desbloquear</>
+                  ) : (
+                    <><Lock size={15} /> Bloquear</>
+                  )}
+                </button>
+              </div>
+
               {/* Coordenadas comunes masivas */}
               {(() => {
                 const firstItemX = getItemX(selection.items[0], quests, images);
@@ -1772,6 +2119,25 @@ function App() {
                             updateQuest(updatesList);
                           }}
                         />
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '6px', color: 'var(--text-secondary)' }}
+                          onClick={() => setTexturePicker({
+                            isOpen: true,
+                            targetType: 'icon',
+                            title: 'Asignar Icono a Misiones Seleccionadas',
+                            onSelect: (val) => {
+                              const updatesList = selectedQuests.map(item => ({
+                                id: item.id as string,
+                                updates: { icon: val.trim() ? val : undefined }
+                              }));
+                              updateQuest(updatesList);
+                            }
+                          })}
+                          title="Explorar texturas en catálogo"
+                        >
+                          <Search size={16} />
+                        </button>
                         {shareSameIcon && firstIcon && (
                           <button 
                             className="btn-icon" 
@@ -2288,13 +2654,48 @@ function App() {
           
           {selection.type === 'image' && selection.items.length === 1 && selection.id !== null && (
             <div>
-              <h2 className="section-title">Imagen Seleccionada</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <h2 className="section-title" style={{ margin: 0 }}>Imagen Seleccionada</h2>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    className={`btn-icon ${lockedKeys.includes(`img-${selection.id}`) ? 'active' : ''}`}
+                    onClick={() => toggleLock(`img-${selection.id}`)}
+                    title={lockedKeys.includes(`img-${selection.id}`) ? "Desbloquear imagen" : "Bloquear imagen"}
+                    style={{ padding: '6px', color: lockedKeys.includes(`img-${selection.id}`) ? '#f38ba8' : 'var(--text-secondary)' }}
+                  >
+                    {lockedKeys.includes(`img-${selection.id}`) ? <Lock size={16} /> : <Unlock size={16} />}
+                  </button>
+                  <button
+                    className="btn-icon"
+                    onClick={duplicateSelection}
+                    title="Duplicar imagen (Ctrl+D)"
+                    style={{ padding: '6px', color: 'var(--text-secondary)' }}
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
               <div className="input-group">
                 <label>Textura (URL/Path)</label>
-                <input type="text" className="input-field" 
-                  value={images[selection.id as number]?.image || ''} 
-                  onChange={(e) => updateImage(selection.id as number, { image: e.target.value })}
-                />
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <input type="text" className="input-field" 
+                    value={images[selection.id as number]?.image || ''} 
+                    onChange={(e) => updateImage(selection.id as number, { image: e.target.value })}
+                  />
+                  <button 
+                    className="btn-icon" 
+                    title="Explorar texturas en catálogo" 
+                    onClick={() => setTexturePicker({
+                      isOpen: true,
+                      targetType: 'image',
+                      title: 'Seleccionar Imagen de Fondo',
+                      onSelect: (val) => updateImage(selection.id as number, { image: val })
+                    })}
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <Search size={16} />
+                  </button>
+                </div>
               </div>
               <div className="row">
                 <div className="input-group">
@@ -2426,7 +2827,27 @@ function App() {
 
             return (
               <div>
-                <h2 className="section-title">Misión Seleccionada</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h2 className="section-title" style={{ margin: 0 }}>Misión Seleccionada</h2>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      className={`btn-icon ${lockedKeys.includes(`quest-${selection.id}`) ? 'active' : ''}`}
+                      onClick={() => toggleLock(`quest-${selection.id}`)}
+                      title={lockedKeys.includes(`quest-${selection.id}`) ? "Desbloquear misión" : "Bloquear misión"}
+                      style={{ padding: '6px', color: lockedKeys.includes(`quest-${selection.id}`) ? '#f38ba8' : 'var(--text-secondary)' }}
+                    >
+                      {lockedKeys.includes(`quest-${selection.id}`) ? <Lock size={16} /> : <Unlock size={16} />}
+                    </button>
+                    <button
+                      className="btn-icon"
+                      onClick={duplicateSelection}
+                      title="Duplicar misión (Ctrl+D)"
+                      style={{ padding: '6px', color: 'var(--text-secondary)' }}
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                </div>
                 <div className="input-group">
                   <label>ID</label>
                   <input type="text" className="input-field" readOnly value={selection.id as string} />
@@ -2458,6 +2879,19 @@ function App() {
                         updateQuest(selection.id as string, { icon: newIcon });
                       }}
                     />
+                    <button 
+                      className="btn-icon" 
+                      title="Explorar texturas en catálogo" 
+                      onClick={() => setTexturePicker({
+                        isOpen: true,
+                        targetType: 'icon',
+                        title: 'Seleccionar Icono de Misión',
+                        onSelect: (val) => updateQuest(selection.id as string, { icon: val })
+                      })}
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      <Search size={16} />
+                    </button>
                     <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
                       setNbtEditor({
                         title: 'Editar Ícono NBT',
@@ -2884,6 +3318,27 @@ function App() {
                                         updateQuest(selection.id as string, { rewards: newRewards });
                                       }}
                                     />
+                                    <button 
+                                     className="btn-icon" 
+                                     title="Explorar ítems en catálogo" 
+                                     onClick={() => setTexturePicker({
+                                       isOpen: true,
+                                       targetType: 'icon',
+                                       title: 'Seleccionar Ítem de Recompensa',
+                                       onSelect: (val) => {
+                                         const newRewards = [...rewardsArray];
+                                         if (typeof newRewards[rIdx].item === 'object' && newRewards[rIdx].item !== null) {
+                                           newRewards[rIdx].item = { ...newRewards[rIdx].item, id: val };
+                                         } else {
+                                           newRewards[rIdx].item = val;
+                                         }
+                                         updateQuest(selection.id as string, { rewards: newRewards });
+                                       }
+                                     })}
+                                     style={{ color: 'var(--text-secondary)' }}
+                                   >
+                                     <Search size={16} />
+                                   </button>
                                     <button className="btn-icon" title="Editar NBT Avanzado" onClick={() => {
                                       setNbtEditor({
                                         title: 'Editar Item NBT (Reward)',
@@ -2994,6 +3449,16 @@ function App() {
           </div>
         </div>
       </div>
+    )}
+
+    {texturePicker && texturePicker.isOpen && (
+      <TexturePickerModal
+        isOpen={texturePicker.isOpen}
+        onClose={() => setTexturePicker(null)}
+        title={texturePicker.title}
+        targetType={texturePicker.targetType}
+        onSelect={texturePicker.onSelect}
+      />
     )}
 
     {contextMenu.visible && (

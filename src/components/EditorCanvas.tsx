@@ -3,6 +3,7 @@ import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arr
 import useImage from 'use-image';
 import { MousePointer, Hand, Magnet } from 'lucide-react';
 import Konva from 'konva';
+import { QuestShape } from './QuestShape';
 
 interface CanvasProps {
   quests: any[];
@@ -32,6 +33,10 @@ interface CanvasProps {
   setSnapToGrid?: (snap: boolean) => void;
   snapMode?: 'relative' | 'absolute';
   setSnapMode?: (mode: 'relative' | 'absolute') => void;
+  lockedKeys?: string[];
+  onConnectQuests?: (sourceQuestId: string, targetQuestId: string) => void;
+  cycleNodeIds?: Set<string>;
+  brokenDepQuestIds?: Set<string>;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -68,8 +73,11 @@ const getCandidateUrls = (icon: any): string[] => {
   const cleanBase = baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`;
 
   if (path.includes('textures/')) {
+    const stripped = pathClean.replace(/^textures\//, '');
     urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
     urls.push(`${cleanBase}textures/${namespace}/${path}`);
+    urls.push(`${cleanBase}textures/${namespace}/${stripped}.png`);
+    urls.push(`${cleanBase}textures/${namespace}/${stripped}`);
   } else {
     // Intentar bajo textures/
     urls.push(`${cleanBase}textures/${namespace}/textures/${pathClean}.png`);
@@ -166,7 +174,11 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   snapToGrid: propSnapToGrid,
   setSnapToGrid: propSetSnapToGrid,
   snapMode: propSnapMode,
-  setSnapMode: propSetSnapMode
+  setSnapMode: propSetSnapMode,
+  lockedKeys = [],
+  onConnectQuests,
+  cycleNodeIds = new Set(),
+  brokenDepQuestIds = new Set()
 }) => {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -191,6 +203,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   const [draggingId, setDraggingId] = useState<string | number | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number, y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
+
+  // Conexión interactiva de dependencias (Wire Dragging)
+  const [wireDrag, setWireDrag] = useState<{
+    sourceQuestId: string;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -400,6 +420,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             }
           }
 
+          if (wireDrag) {
+            if (stage) {
+              const pointer = stage.getPointerPosition();
+              if (pointer) {
+                const localX = (pointer.x - stage.x()) / stage.scaleX();
+                const localY = (pointer.y - stage.y()) / stage.scaleY();
+                setWireDrag(prev => prev ? ({ ...prev, currentX: localX, currentY: localY }) : null);
+              }
+            }
+          }
+
           if (!startPointerPos || !selectionRect) return;
           if (!stage) return;
           const pointer = stage.getPointerPosition();
@@ -418,6 +449,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
           onPointerPosChange?.(null);
         }}
         onMouseUp={() => {
+          if (wireDrag) {
+            setWireDrag(null);
+          }
           if (startPointerPos && selectionRect) {
             // Evaluar intersecciones al soltar el mouse
             const selectedImageIndices: number[] = [];
@@ -443,7 +477,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   const rectY2 = selectionRect.y + selectionRect.h;
 
                   const isZVisible = visibleZLevels.includes(Number(img.order?.value ?? img.order ?? 1));
-                  const intersects = isZVisible && imgX1 < rectX2 && imgX2 > rectX1 && imgY1 < rectY2 && imgY2 > rectY1;
+                  const isImgLocked = lockedKeys.includes(`img-${idx}`);
+                  const intersects = !isImgLocked && isZVisible && imgX1 < rectX2 && imgX2 > rectX1 && imgY1 < rectY2 && imgY2 > rectY1;
                   if (intersects) {
                     selectedImageIndices.push(idx);
                   }
@@ -452,6 +487,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
               if (layersVisible.quests) {
                 quests.forEach((q) => {
+                  const isQLocked = lockedKeys.includes(`quest-${q.id}`);
+                  if (isQLocked) return;
                   const x = getDValue(q.x) * SCALE_FACTOR;
                   const y = getDValue(q.y) * SCALE_FACTOR;
                   const sizeVal = getDValue(q.size) || 1.0;
@@ -528,6 +565,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
               const h = getDValue(img.height) * SCALE_FACTOR;
               const rot = getDValue(img.rotation);
               const isSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+              const isLocked = lockedKeys.includes(`img-${idx}`);
 
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
               const isOffsetApplied = isSelected && draggingId !== null && draggingId !== idx;
@@ -540,7 +578,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   x={currentX}
                   y={currentY}
                   rotation={rot}
-                  draggable
+                  draggable={!isLocked}
                   onClick={(e) => {
                     e.cancelBubble = true;
                     // Selección individual o múltiple con Shift
@@ -563,6 +601,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragStart={(e) => {
+                    if (isLocked) {
+                      e.target.stopDrag();
+                      return;
+                    }
                     const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
                     if (!isImgSelected) {
                       setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
@@ -788,6 +830,15 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       strokeWidth={3 / stageScale}
                     />
                   )}
+
+                  {isLocked && (
+                    <Text
+                      text="🔒"
+                      fontSize={14 / stageScale}
+                      x={-w / 2 + 4}
+                      y={-h / 2 + 4}
+                    />
+                  )}
                 </Group>
               );
             })}
@@ -836,16 +887,20 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   const endX = dstX - (dx / dist) * (dstRadius + 5);
                   const endY = dstY - (dy / dist) * (dstRadius + 5);
 
+                  const isCycleEdge = cycleNodeIds.has(q.id) && cycleNodeIds.has(depId);
+                  const arrowColor = isCycleEdge ? '#f38ba8' : '#57606f';
+                  const arrowWidth = isCycleEdge ? 3.5 : 2.5;
+
                   return (
                     <Arrow
                       key={`${q.id}-dep-${depId}`}
                       points={[startX, startY, endX, endY]}
-                      stroke="#57606f"
-                      strokeWidth={2.5}
-                      fill="#57606f"
+                      stroke={arrowColor}
+                      strokeWidth={arrowWidth}
+                      fill={arrowColor}
                       pointerLength={9}
                       pointerWidth={8}
-                      opacity={0.65}
+                      opacity={isCycleEdge ? 0.95 : 0.65}
                       lineCap="round"
                       lineJoin="round"
                     />
@@ -861,6 +916,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
               const sizeVal = getDValue(q.size) || 1.0;
               const nodeSize = 40 * sizeVal; // 40px es el tamaño base para size: 1.0d
               const isSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+              const isLocked = lockedKeys.includes(`quest-${q.id}`);
               
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
               const isOffsetApplied = isSelected && draggingId !== null && draggingId !== q.id;
@@ -874,7 +930,16 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   key={q.id}
                   x={currentX}
                   y={currentY}
-                  draggable
+                  draggable={!isLocked}
+                  onMouseEnter={() => setHoveredQuestId(q.id)}
+                  onMouseLeave={() => setHoveredQuestId(prev => prev === q.id ? null : prev)}
+                  onMouseUp={(e) => {
+                    if (wireDrag && wireDrag.sourceQuestId !== q.id) {
+                      e.cancelBubble = true;
+                      onConnectQuests?.(wireDrag.sourceQuestId, q.id);
+                      setWireDrag(null);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.evt.preventDefault();
                     if (onQuestContextMenu) {
@@ -902,6 +967,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragStart={(e) => {
+                    if (isLocked) {
+                      e.target.stopDrag();
+                      return;
+                    }
                     const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                     if (!isQSelected) {
                       setSelection({ type: 'quest', ids: [q.id], items: [{ type: 'quest', id: q.id }] });
@@ -1012,17 +1081,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     setDragOffset({ x: 0, y: 0 });
                   }}
                 >
-                  <FtbTexture icon={iconObj} width={nodeSize} height={nodeSize} />
-
-                  {/* Highlight de selección */}
-                  {isSelected && (
-                    <Circle
-                      radius={nodeSize / 2 + 4}
-                      stroke="#ffffff"
-                      strokeWidth={2 / stageScale}
-                      dash={[5, 5]}
-                    />
-                  )}
+                  {/* Marco de forma (Shape) y contorno de selección de FTB Quests */}
+                  <QuestShape 
+                    shape={q.shape} 
+                    size={nodeSize} 
+                    isSelected={isSelected} 
+                    stageScale={stageScale} 
+                  />
+                  <FtbTexture icon={iconObj} width={nodeSize * 0.72} height={nodeSize * 0.72} />
                   
                   <Text
                     text={q.title || "Misión"}
@@ -1037,6 +1103,61 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     shadowOffset={{x: 1, y: 1}}
                     shadowOpacity={1}
                   />
+
+                  {isLocked && (
+                    <Text
+                      text="🔒"
+                      fontSize={14 / stageScale}
+                      x={-nodeSize / 2}
+                      y={-nodeSize / 2}
+                    />
+                  )}
+
+                  {/* Puerto / Ancla interactiva para conectar dependencias (Wire Dragging) */}
+                  {(isSelected || hoveredQuestId === q.id) && !isLocked && (
+                    <Group
+                      x={nodeSize / 2 + 10}
+                      y={0}
+                      onMouseDown={(e) => {
+                        e.cancelBubble = true;
+                        setWireDrag({
+                          sourceQuestId: q.id,
+                          currentX,
+                          currentY
+                        });
+                      }}
+                    >
+                      <Circle
+                        radius={7 / stageScale}
+                        fill="#89b4fa"
+                        stroke="#ffffff"
+                        strokeWidth={1.5 / stageScale}
+                      />
+                      <Text
+                        text="➔"
+                        fontSize={9 / stageScale}
+                        fill="#11111b"
+                        offsetX={4 / stageScale}
+                        offsetY={5 / stageScale}
+                      />
+                    </Group>
+                  )}
+
+                  {/* Indicador de Ciclo en la Misión */}
+                  {cycleNodeIds.has(q.id) && (
+                    <Group x={nodeSize / 2} y={-nodeSize / 2}>
+                      <Circle radius={8 / stageScale} fill="#f38ba8" stroke="#ffffff" strokeWidth={1.2 / stageScale} />
+                      <Text text="⚠️" fontSize={9 / stageScale} offsetX={5 / stageScale} offsetY={5 / stageScale} />
+                    </Group>
+                  )}
+
+                  {/* Indicador de Dependencia Rota en la Misión */}
+                  {brokenDepQuestIds.has(q.id) && (
+                    <Group x={-nodeSize / 2} y={-nodeSize / 2}>
+                      <Circle radius={8 / stageScale} fill="#fab387" stroke="#ffffff" strokeWidth={1.2 / stageScale} />
+                      <Text text="❓" fontSize={9 / stageScale} offsetX={4 / stageScale} offsetY={5 / stageScale} />
+                    </Group>
+                  )}
                 </Group>
               );
             })}
@@ -1058,6 +1179,27 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             />
           </Layer>
         )}
+
+        {/* Flecha elástica activa durante el arrastre de cable (Wire Dragging) */}
+        {wireDrag && (() => {
+          const srcQ = quests.find(qi => qi.id === wireDrag.sourceQuestId);
+          if (!srcQ) return null;
+          const srcX = getDValue(srcQ.x) * SCALE_FACTOR;
+          const srcY = getDValue(srcQ.y) * SCALE_FACTOR;
+          return (
+            <Layer listening={false}>
+              <Arrow
+                points={[srcX, srcY, wireDrag.currentX, wireDrag.currentY]}
+                stroke="#89b4fa"
+                strokeWidth={3 / stageScale}
+                fill="#89b4fa"
+                pointerLength={10 / stageScale}
+                pointerWidth={8 / stageScale}
+                dash={[8, 4]}
+              />
+            </Layer>
+          );
+        })()}
       </Stage>
     </div>
   );

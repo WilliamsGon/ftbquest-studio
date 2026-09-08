@@ -92,6 +92,26 @@ async function main() {
   
   console.log("\n¡Extracción finalizada!");
   console.log(`Revisa la carpeta: ${OUT_DIR}`);
+
+  // Generar índice de texturas automático
+  console.log("[*] Generando índice de texturas textures-index.json...");
+  function indexFiles(dir) {
+    let res = [];
+    if (!fs.existsSync(dir)) return res;
+    const list = fs.readdirSync(dir);
+    for (const f of list) {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).isDirectory()) {
+        res = res.concat(indexFiles(p));
+      } else if (f.endsWith('.png')) {
+        res.push(path.relative(OUT_DIR, p).replace(/\\/g, '/'));
+      }
+    }
+    return res;
+  }
+  const allTextures = indexFiles(OUT_DIR);
+  fs.writeFileSync(path.join(OUT_DIR, 'textures-index.json'), JSON.stringify(allTextures));
+  console.log(`[✓] Índice generado con ${allTextures.length} texturas.`);
 }
 
 main().catch(console.error);
