@@ -310,9 +310,17 @@ h1, h2, h3 {
   border-radius: 30px;
   padding: 6px 12px;
   display: flex;
+  align-items: center;
   gap: 8px;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
   z-index: 100;
+}
+
+.auto-layout-menu-wrapper {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  height: 100%;
 }
 
 .toolbar-btn {
@@ -832,16 +840,6 @@ h1, h2, h3 {
 }
 
 /* Pinned Clipboard / Reusable Assets Styles */
-
-.canvas-toolbar {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  display: flex;
-  gap: 8px;
-  z-index: 1000;
-  pointer-events: auto;
-}
 
 .pinned-toggle-btn {
   background: rgba(30, 30, 46, 0.75);

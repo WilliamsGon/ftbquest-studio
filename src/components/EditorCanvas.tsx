@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import useImage from 'use-image';
-import { MousePointer, Hand, Magnet } from 'lucide-react';
+import { MousePointer, Hand, Magnet, Sparkles, ChevronDown } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
 
@@ -37,6 +37,7 @@ interface CanvasProps {
   onConnectQuests?: (sourceQuestId: string, targetQuestId: string) => void;
   cycleNodeIds?: Set<string>;
   brokenDepQuestIds?: Set<string>;
+  onAutoLayout?: (direction: 'LR' | 'TB', onlySelected: boolean) => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -178,8 +179,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   lockedKeys = [],
   onConnectQuests,
   cycleNodeIds = new Set(),
-  brokenDepQuestIds = new Set()
+  brokenDepQuestIds = new Set(),
+  onAutoLayout
 }) => {
+  const [isAutoLayoutMenuOpen, setIsAutoLayoutMenuOpen] = useState(false);
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [localSnapToGrid, setLocalSnapToGrid] = useState(true);
@@ -263,6 +266,30 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+
+  // Cerrar menú de Auto-Organizar al hacer clic fuera o presionar Escape
+  useEffect(() => {
+    if (!isAutoLayoutMenuOpen) return;
+    const handleDown = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent && e.key === 'Escape') {
+        setIsAutoLayoutMenuOpen(false);
+        return;
+      }
+      if (e instanceof MouseEvent) {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('.auto-layout-menu-wrapper')) {
+          return; // No cerrar si el clic es dentro del menú o sus botones
+        }
+        setIsAutoLayoutMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleDown);
+    window.addEventListener('keydown', handleDown);
+    return () => {
+      window.removeEventListener('mousedown', handleDown);
+      window.removeEventListener('keydown', handleDown);
+    };
+  }, [isAutoLayoutMenuOpen]);
 
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
@@ -371,6 +398,118 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             }}>{pinnedCount}</span>
           )}
         </button>
+
+        {onAutoLayout && (
+          <>
+            <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+            <div className="auto-layout-menu-wrapper" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                className={`toolbar-btn ${isAutoLayoutMenuOpen ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsAutoLayoutMenuOpen(!isAutoLayoutMenuOpen);
+                }}
+                style={{ gap: '6px' }}
+                title="Organizar árbol de misiones automáticamente según sus dependencias"
+              >
+                <Sparkles size={15} style={{ color: isAutoLayoutMenuOpen ? '#ffffff' : 'var(--accent-color)' }} />
+                <span>Auto-Organizar</span>
+                <ChevronDown size={13} style={{ opacity: 0.7, transform: isAutoLayoutMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </button>
+
+              {isAutoLayoutMenuOpen && (() => {
+                const selectedQuestsCount = selection.items.filter(i => i.type === 'quest').length;
+                const hasMultiQuests = selectedQuestsCount > 1;
+
+                return (
+                  <div 
+                    className="glass-panel"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      borderRadius: '10px',
+                      padding: '8px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      zIndex: 1000,
+                      minWidth: '230px',
+                      boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+                      background: 'rgba(24, 27, 34, 0.96)',
+                      border: '1px solid var(--panel-border)',
+                      backdropFilter: 'blur(16px)'
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', padding: '2px 6px', fontWeight: 600 }}>
+                      {hasMultiQuests ? `SELECCIÓN (${selectedQuestsCount} misiones)` : 'TODO EL CAPÍTULO'}
+                    </div>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ justifyContent: 'flex-start', padding: '7px 12px', fontSize: '0.78rem', gap: '8px' }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAutoLayout('LR', hasMultiQuests);
+                        setIsAutoLayoutMenuOpen(false);
+                      }}
+                    >
+                      <span>➡️</span> Horizontal (Izq ➔ Der)
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ justifyContent: 'flex-start', padding: '7px 12px', fontSize: '0.78rem', gap: '8px' }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAutoLayout('TB', hasMultiQuests);
+                        setIsAutoLayoutMenuOpen(false);
+                      }}
+                    >
+                      <span>⬇️</span> Vertical (Arriba ➔ Abajo)
+                    </button>
+
+                    {hasMultiQuests && (
+                      <>
+                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', padding: '2px 6px', fontWeight: 600 }}>
+                          TODO EL CAPÍTULO
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ justifyContent: 'flex-start', padding: '7px 12px', fontSize: '0.78rem', gap: '8px' }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAutoLayout('LR', false);
+                            setIsAutoLayoutMenuOpen(false);
+                          }}
+                        >
+                          <span>🌐</span> Todo (Horizontal)
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ justifyContent: 'flex-start', padding: '7px 12px', fontSize: '0.78rem', gap: '8px' }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAutoLayout('TB', false);
+                            setIsAutoLayoutMenuOpen(false);
+                          }}
+                        >
+                          <span>🌐</span> Todo (Vertical)
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </>
+        )}
       </div>
 
       <Stage

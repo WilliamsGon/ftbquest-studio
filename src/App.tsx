@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles } from 'lucide-react';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { validateQuestGraph } from './utils/graphValidation';
+import { computeAutoLayout } from './utils/autoLayout';
 import { v4 as uuidv4 } from 'uuid';
 import { EditorCanvas } from './components/EditorCanvas';
 import { TableView } from './components/TableView';
@@ -1582,6 +1583,52 @@ function App() {
     }
   };
 
+  const handleAutoLayout = (direction: 'LR' | 'TB' = 'LR', onlySelected: boolean = false) => {
+    if (!quests || quests.length === 0) return;
+
+    const selectedQuestIds = selection.items
+      .filter(item => item.type === 'quest')
+      .map(item => String(item.id));
+
+    const targetQuestIds = (onlySelected && selectedQuestIds.length > 1)
+      ? selectedQuestIds
+      : undefined;
+
+    const result = computeAutoLayout(quests, {
+      direction,
+      nodeSpacing: 2.0,
+      layerSpacing: 2.5,
+      targetQuestIds
+    });
+
+    if (result.organizedCount === 0) {
+      showToast('No hay misiones disponibles para organizar', 'warning');
+      return;
+    }
+
+    const newQuests = quests.map(q => {
+      const newPos = result.positions.get(String(q.id)) || result.positions.get(q.id as any);
+      if (newPos) {
+        return {
+          ...q,
+          x: typeof q.x === 'object' && q.x !== null 
+            ? { ...q.x, value: newPos.x } 
+            : { __type: 'number', value: newPos.x, suffix: 'd' },
+          y: typeof q.y === 'object' && q.y !== null 
+            ? { ...q.y, value: newPos.y } 
+            : { __type: 'number', value: newPos.y, suffix: 'd' }
+        };
+      }
+      return q;
+    });
+
+    updateState(newQuests, images);
+
+    const scopeMsg = targetQuestIds ? `${result.organizedCount} misiones seleccionadas` : 'todo el capítulo';
+    const dirMsg = direction === 'LR' ? 'Horizontal (Izq ➔ Der)' : 'Vertical (Arriba ➔ Abajo)';
+    showToast(`⚡ Auto-organizado ${scopeMsg} en ${result.totalLayers} niveles (${dirMsg})`, 'success');
+  };
+
   const updateSelectedCoordinates = (axis: 'x' | 'y', val: number) => {
     if (isNaN(val)) return;
     
@@ -1683,6 +1730,33 @@ function App() {
               >
                 Rehacer
               </button>
+            </div>
+          )}
+
+          {snbtData && (
+            <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '8px', padding: '8px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Sparkles size={13} className="text-accent" />
+                <span>Auto-Organizar Árbol</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '5px 8px', fontSize: '0.74rem', justifyContent: 'center' }}
+                  onClick={() => handleAutoLayout('LR', selection.items.filter(i => i.type === 'quest').length > 1)}
+                  title="Organizar horizontalmente (Izquierda a Derecha)"
+                >
+                  ➡️ Horizontal
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '5px 8px', fontSize: '0.74rem', justifyContent: 'center' }}
+                  onClick={() => handleAutoLayout('TB', selection.items.filter(i => i.type === 'quest').length > 1)}
+                  title="Organizar verticalmente (Arriba a Abajo)"
+                >
+                  ⬇️ Vertical
+                </button>
+              </div>
             </div>
           )}
 
@@ -1836,6 +1910,7 @@ function App() {
             onConnectQuests={handleConnectQuests}
             cycleNodeIds={graphValidation.cycleNodeIds}
             brokenDepQuestIds={graphValidation.brokenDepQuestIds}
+            onAutoLayout={handleAutoLayout}
           />
 
           {/* Cajón deslizable (Drawer) del Portapapeles */}
@@ -2010,6 +2085,33 @@ function App() {
                   )}
                 </button>
               </div>
+
+              {/* Botones de Auto-Organizar Selección */}
+              {selection.items.filter(i => i.type === 'quest').length > 1 && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    Árbol de Dependencias
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
+                      onClick={() => handleAutoLayout('LR', true)}
+                      title="Auto-organizar las misiones seleccionadas horizontalmente por dependencias"
+                    >
+                      <Sparkles size={14} className="text-accent" /> Árbol H
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
+                      onClick={() => handleAutoLayout('TB', true)}
+                      title="Auto-organizar las misiones seleccionadas verticalmente por dependencias"
+                    >
+                      <Sparkles size={14} className="text-accent" /> Árbol V
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Coordenadas comunes masivas */}
               {(() => {
