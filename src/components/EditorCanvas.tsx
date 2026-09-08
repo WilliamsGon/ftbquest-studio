@@ -647,8 +647,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         cursor: activeTool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'default'
       }}
     >
-      {/* Barra Flotante de Simulación "Vista Jugador" */}
-      {isPlayerMode && (
+      {/* Barra Flotante Superior: Vista Jugador vs Barra de Herramientas de Edición */}
+      {isPlayerMode ? (
         <div className="player-sim-dock">
           <div className="player-sim-badge">
             <span>👁️</span>
@@ -682,6 +682,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             <span>⚡</span> Completar Todo
           </button>
           <button
+            className={`btn btn-secondary ${isSearchOpen ? 'active' : ''}`}
+            style={{ padding: '3px 8px', fontSize: '0.73rem', gap: '4px' }}
+            onClick={() => {
+              setSearchInitialMode('search');
+              setIsSearchOpen(!isSearchOpen);
+            }}
+            title="Buscar misiones en el lienzo (Ctrl + F)"
+          >
+            <Search size={13} />
+          </button>
+          <button
             className="btn btn-primary"
             style={{ padding: '3px 10px', fontSize: '0.73rem', background: '#e11d48', borderColor: '#be123c', gap: '4px' }}
             onClick={() => setIsPlayerMode?.(false)}
@@ -690,10 +701,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             <span>✕</span> Salir
           </button>
         </div>
-      )}
-
-      {/* Barra de Herramientas Flotante (Dock segmentado compacto estilo Figma) */}
-      <div className="canvas-toolbar">
+      ) : (
+        /* Barra de Herramientas Flotante (Dock segmentado compacto estilo Figma) */
+        <div className="canvas-toolbar">
         {/* Grupo 1: Herramientas de Navegación del Cursor */}
         <div className="toolbar-segmented-group">
           <button 
@@ -944,6 +954,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
           <span style={{ fontSize: '0.95rem' }}>👁️</span>
         </button>
       </div>
+      )}
 
       {/* Buscador y Reemplazo Rápido en el Lienzo (Ctrl + F / Ctrl + H) */}
       <QuestSearchBar
