@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import useImage from 'use-image';
-import { MousePointer, Hand, Magnet, Sparkles, ChevronDown } from 'lucide-react';
+import { MousePointer, Hand, Magnet, Sparkles, ChevronDown, Search } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
 import { Minimap } from './Minimap';
+import { QuestSearchBar, type SearchMatch } from './QuestSearchBar';
 
 interface CanvasProps {
   quests: any[];
@@ -42,6 +43,14 @@ interface CanvasProps {
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
+
+const getDValue = (obj: any): number => {
+  if (obj && obj.__type === 'number') return obj.value;
+  if (typeof obj === 'number') return obj;
+  if (typeof obj === 'object' && obj !== null && typeof obj.value === 'number') return obj.value;
+  const parsed = parseFloat(String(obj));
+  return isNaN(parsed) ? 0 : parsed;
+};
 
 // Helper para obtener las URLs candidatas a ser la textura
 const getCandidateUrls = (icon: any): string[] => {
@@ -216,6 +225,150 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   } | null>(null);
   const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
+  // Buscador Rápido de Misiones (Ctrl + F)
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  // Atajo de teclado: Ctrl+F para abrir el buscador rápido
+  useEffect(() => {
+    const handleSearchShortcut = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleSearchShortcut);
+    return () => window.removeEventListener('keydown', handleSearchShortcut);
+  }, []);
+
+  const searchMatches = useMemo<SearchMatch[]>(() => {
+    const qTrim = searchQuery.trim().toLowerCase();
+    if (!qTrim) return [];
+
+    const results: SearchMatch[] = [];
+
+    quests.forEach(q => {
+      const qId = String(q.id || '').toLowerCase();
+      const title = (typeof q.title === 'string' ? q.title : '').toLowerCase();
+      const subtitle = (typeof q.subtitle === 'string' ? q.subtitle : '').toLowerCase();
+
+      // 1. Título
+      if (title.includes(qTrim)) {
+        results.push({ quest: q, matchField: 'title', matchDetail: q.title });
+        return;
+      }
+
+      // 2. ID
+      if (qId.includes(qTrim)) {
+        results.push({ quest: q, matchField: 'id', matchDetail: String(q.id) });
+        return;
+      }
+
+      // 3. Subtítulo
+      if (subtitle.includes(qTrim)) {
+        results.push({ quest: q, matchField: 'subtitle', matchDetail: q.subtitle });
+        return;
+      }
+
+      // 4. Descripción
+      if (q.description) {
+        const descArr = Array.isArray(q.description) ? q.description : [q.description];
+        const matchedLine = descArr.find((line: any) => typeof line === 'string' && line.toLowerCase().includes(qTrim));
+        if (matchedLine) {
+          results.push({ quest: q, matchField: 'description', matchDetail: String(matchedLine) });
+          return;
+        }
+      }
+
+      // 5. Tareas
+      if (q.tasks) {
+        const taskList = Array.isArray(q.tasks) ? q.tasks : [q.tasks];
+        for (const t of taskList) {
+          if (!t) continue;
+          const tTitle = (typeof t.title === 'string' ? t.title : '').toLowerCase();
+          const tType = (typeof t.type === 'string' ? t.type : '').toLowerCase();
+          const itemStr = typeof t.item === 'string' ? t.item : (t.item && typeof t.item.id === 'string' ? t.item.id : '');
+          const tItem = itemStr.toLowerCase();
+          if (tTitle.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'task', matchDetail: `Tarea: ${t.title}` });
+            return;
+          }
+          if (tItem.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'task', matchDetail: `Item: ${itemStr}` });
+            return;
+          }
+          if (tType.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'task', matchDetail: `Tipo: ${t.type}` });
+            return;
+          }
+        }
+      }
+
+      // 6. Recompensas
+      if (q.rewards) {
+        const rewardList = Array.isArray(q.rewards) ? q.rewards : [q.rewards];
+        for (const r of rewardList) {
+          if (!r) continue;
+          const rTitle = (typeof r.title === 'string' ? r.title : '').toLowerCase();
+          const rType = (typeof r.type === 'string' ? r.type : '').toLowerCase();
+          const itemStr = typeof r.item === 'string' ? r.item : (r.item && typeof r.item.id === 'string' ? r.item.id : '');
+          const rItem = itemStr.toLowerCase();
+          if (rTitle.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'reward', matchDetail: `Recompensa: ${r.title}` });
+            return;
+          }
+          if (rItem.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'reward', matchDetail: `Item: ${itemStr}` });
+            return;
+          }
+          if (rType.includes(qTrim)) {
+            results.push({ quest: q, matchField: 'reward', matchDetail: `Tipo: ${r.type}` });
+            return;
+          }
+        }
+      }
+    });
+
+    return results;
+  }, [quests, searchQuery]);
+
+  const matchedQuestIds = useMemo(() => {
+    return new Set(searchMatches.map(m => String(m.quest.id)));
+  }, [searchMatches]);
+
+  const activeMatch = searchMatches[activeMatchIndex] || null;
+  const activeMatchQuestId = activeMatch ? String(activeMatch.quest.id) : null;
+
+  useEffect(() => {
+    if (activeMatchIndex >= searchMatches.length) {
+      setActiveMatchIndex(0);
+    }
+  }, [searchMatches.length, activeMatchIndex]);
+
+  const centerOnQuest = useCallback((quest: any) => {
+    if (!quest) return;
+    const qx = getDValue(quest.x) * SCALE_FACTOR;
+    const qy = getDValue(quest.y) * SCALE_FACTOR;
+    setStagePos({
+      x: dimensions.width / 2 - qx * stageScale,
+      y: dimensions.height / 2 - qy * stageScale,
+    });
+    setSelection({
+      type: 'quest',
+      ids: [quest.id],
+      id: quest.id,
+      items: [{ type: 'quest', id: quest.id }]
+    });
+  }, [dimensions, stageScale, setSelection]);
+
+  const handleNavigateMatch = useCallback((index: number) => {
+    if (index < 0 || index >= searchMatches.length) return;
+    setActiveMatchIndex(index);
+    centerOnQuest(searchMatches[index].quest);
+  }, [searchMatches, centerOnQuest]);
+
   useEffect(() => {
     if (containerRef.current) {
       setDimensions({
@@ -330,11 +483,6 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     });
   };
 
-  const getDValue = (obj: any) => {
-    if (obj && obj.__type === 'number') return obj.value;
-    if (typeof obj === 'number') return obj;
-    return 0;
-  };
 
   // Helper para deducir el ícono de una misión
   const getQuestIcon = (q: any) => {
@@ -530,7 +678,33 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             </div>
           </>
         )}
+        <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)', margin: '0 4px' }} />
+        <button
+          className={`toolbar-btn ${isSearchOpen ? 'active' : ''}`}
+          onClick={() => setIsSearchOpen(prev => !prev)}
+          title="Buscar misiones en el lienzo (Ctrl + F)"
+          style={{ gap: '6px' }}
+        >
+          <Search size={15} style={{ color: isSearchOpen ? '#ffffff' : 'var(--accent-color)' }} />
+          <span>Buscar</span>
+          <kbd style={{ fontSize: '0.68rem', padding: '1px 5px', background: 'rgba(255,255,255,0.12)', borderRadius: '4px' }}>Ctrl+F</kbd>
+        </button>
       </div>
+
+      {/* Buscador Rápido en el Lienzo (Ctrl + F) */}
+      <QuestSearchBar
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        query={searchQuery}
+        onQueryChange={(q) => {
+          setSearchQuery(q);
+          setActiveMatchIndex(0);
+        }}
+        matches={searchMatches}
+        activeIndex={activeMatchIndex}
+        onNavigateMatch={handleNavigateMatch}
+        onSelectQuest={(q) => centerOnQuest(q)}
+      />
 
       <Stage
         width={dimensions.width}
@@ -1077,6 +1251,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
               const isSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
               const isLocked = lockedKeys.includes(`quest-${q.id}`);
               
+              const hasSearchFilter = searchQuery.trim().length > 0;
+              const isSearchMatch = hasSearchFilter && matchedQuestIds.has(String(q.id));
+              const isActiveMatch = activeMatchQuestId === String(q.id);
+
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
               const isOffsetApplied = isSelected && draggingId !== null && draggingId !== q.id;
               const currentX = x + (isOffsetApplied ? dragOffset.x : 0);
@@ -1089,6 +1267,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   key={q.id}
                   x={currentX}
                   y={currentY}
+                  opacity={hasSearchFilter && !isSearchMatch ? 0.28 : 1.0}
                   draggable={!isLocked}
                   onMouseEnter={() => setHoveredQuestId(q.id)}
                   onMouseLeave={() => setHoveredQuestId(prev => prev === q.id ? null : prev)}
@@ -1240,6 +1419,43 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     setDragOffset({ x: 0, y: 0 });
                   }}
                 >
+                  {/* Halo resplandeciente para misiones coincidentes en la búsqueda */}
+                  {isSearchMatch && (
+                    <Circle
+                      radius={nodeSize * 0.72}
+                      stroke={isActiveMatch ? "#00f0ff" : "#89dceb"}
+                      strokeWidth={(isActiveMatch ? 3.5 : 2) / stageScale}
+                      dash={isActiveMatch ? undefined : [4 / stageScale, 2 / stageScale]}
+                      shadowColor={isActiveMatch ? "#00f0ff" : "#89dceb"}
+                      shadowBlur={isActiveMatch ? 18 : 8}
+                      shadowOpacity={1}
+                      listening={false}
+                    />
+                  )}
+
+                  {/* Baliza flotante sobre la coincidencia activa */}
+                  {isActiveMatch && (
+                    <>
+                      <Circle
+                        radius={nodeSize * 0.9}
+                        stroke="#00f0ff"
+                        strokeWidth={1.5 / stageScale}
+                        dash={[6 / stageScale, 3 / stageScale]}
+                        opacity={0.85}
+                        listening={false}
+                      />
+                      <Group y={-nodeSize / 2 - 14 / stageScale} listening={false}>
+                        <Circle radius={9 / stageScale} fill="#00f0ff" shadowColor="#00f0ff" shadowBlur={10} />
+                        <Text
+                          text="🔍"
+                          fontSize={10 / stageScale}
+                          offsetX={5 / stageScale}
+                          offsetY={5 / stageScale}
+                        />
+                      </Group>
+                    </>
+                  )}
+
                   {/* Marco de forma (Shape) y contorno de selección de FTB Quests */}
                   <QuestShape 
                     shape={q.shape} 
@@ -1370,6 +1586,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         stagePos={stagePos}
         dimensions={dimensions}
         onNavigate={(newPos) => setStagePos(newPos)}
+        searchMatchedIds={matchedQuestIds}
+        activeMatchId={activeMatchQuestId}
       />
     </div>
   );

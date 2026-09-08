@@ -13,6 +13,8 @@ interface MinimapProps {
   stagePos: { x: number; y: number };
   dimensions: { width: number; height: number };
   onNavigate: (newStagePos: { x: number; y: number }) => void;
+  searchMatchedIds?: Set<string>;
+  activeMatchId?: string | null;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 world pixels
@@ -44,7 +46,9 @@ export const Minimap: React.FC<MinimapProps> = ({
   stageScale,
   stagePos,
   dimensions,
-  onNavigate
+  onNavigate,
+  searchMatchedIds,
+  activeMatchId
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     const saved = localStorage.getItem('ftb_minimap_visible');
@@ -278,21 +282,54 @@ export const Minimap: React.FC<MinimapProps> = ({
 
     // 3. Dibujar Nodos de Misiones
     const selectedIds = new Set(selection.items.filter(i => i.type === 'quest').map(i => String(i.id)));
+    const hasSearchFilter = searchMatchedIds && searchMatchedIds.size > 0;
 
     quests.forEach(q => {
+      const qStrId = String(q.id);
       const qx = toCanvasX(getDValue(q.x) * SCALE_FACTOR);
       const qy = toCanvasY(getDValue(q.y) * SCALE_FACTOR);
-      const isSelected = selectedIds.has(String(q.id));
+      const isSelected = selectedIds.has(qStrId);
+      const isSearchMatch = hasSearchFilter && searchMatchedIds.has(qStrId);
+      const isActiveMatch = activeMatchId === qStrId;
       const sizeVal = (getDValue(q.size) || 1.0) * 40 * scale;
       const nodeRadius = Math.max(2.5, Math.min(6, sizeVal / 2));
+
+      // Si es la coincidencia activa de búsqueda, dibujar anillo exterior llamativo
+      if (isActiveMatch) {
+        ctx.beginPath();
+        ctx.arc(qx, qy, nodeRadius + 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+        ctx.fill();
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      } else if (isSearchMatch) {
+        ctx.beginPath();
+        ctx.arc(qx, qy, nodeRadius + 2, 0, Math.PI * 2);
+        ctx.strokeStyle = '#89dceb';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
 
       ctx.beginPath();
       ctx.arc(qx, qy, nodeRadius, 0, Math.PI * 2);
 
-      if (isSelected) {
+      if (isActiveMatch) {
+        ctx.fillStyle = '#00f0ff'; // Cyan brillante
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 6;
+      } else if (isSearchMatch) {
+        ctx.fillStyle = '#89dceb'; // Cyan pastel
+        ctx.shadowColor = '#89dceb';
+        ctx.shadowBlur = 3;
+      } else if (isSelected) {
         ctx.fillStyle = '#fab387'; // Naranja acento selección
         ctx.shadowColor = '#fab387';
         ctx.shadowBlur = 4;
+      } else if (hasSearchFilter) {
+        // Atenuado si hay búsqueda activa y no coincide
+        ctx.fillStyle = 'rgba(137, 180, 250, 0.25)';
+        ctx.shadowBlur = 0;
       } else {
         ctx.fillStyle = '#89b4fa'; // Azul FTB
         ctx.shadowBlur = 0;
@@ -300,7 +337,7 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(0, 0, 0, 0.6)';
+      ctx.strokeStyle = (isSelected || isActiveMatch || isSearchMatch) ? '#ffffff' : 'rgba(0, 0, 0, 0.6)';
       ctx.lineWidth = 0.8;
       ctx.stroke();
     });
@@ -317,7 +354,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.fillRect(vpCanvasX, vpCanvasY, vpCanvasW, vpCanvasH);
     ctx.strokeRect(vpCanvasX, vpCanvasY, vpCanvasW, vpCanvasH);
 
-  }, [isCollapsed, quests, images, selection, stageScale, stagePos, dimensions]);
+  }, [isCollapsed, quests, images, selection, stageScale, stagePos, dimensions, searchMatchedIds, activeMatchId]);
 
   // Si está colapsado, mostrar píldora compacta
   if (isCollapsed) {

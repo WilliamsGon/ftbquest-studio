@@ -1364,5 +1364,270 @@ h1, h2, h3 {
   box-shadow: 0 8px 24px rgba(123, 97, 255, 0.35);
 }
 
+/* ========================================================
+   Buscador Rápido en el Lienzo (Ctrl + F)
+   ======================================================== */
+.quest-search-container {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+  pointer-events: auto;
+  animation: dropScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.quest-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(22, 24, 32, 0.94);
+  border: 1px solid rgba(137, 180, 250, 0.3);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quest-search-bar:focus-within {
+  border-color: var(--accent-color);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 0 2px rgba(123, 97, 255, 0.35);
+}
+
+.quest-search-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  padding: 0 2px;
+}
+
+.quest-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  width: 250px;
+  padding: 4px 6px;
+}
+
+.quest-search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.quest-search-counter {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #89dceb;
+  background: rgba(137, 220, 235, 0.12);
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.quest-search-counter.no-matches {
+  color: #f38ba8;
+  background: rgba(243, 139, 168, 0.12);
+}
+
+.quest-search-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
+}
+
+.quest-search-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 5px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quest-search-btn-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.quest-search-btn-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.quest-search-btn-icon.active {
+  background: rgba(123, 97, 255, 0.2);
+  color: var(--accent-color);
+}
+
+.quest-search-btn-icon.close-btn:hover {
+  background: rgba(243, 139, 168, 0.2);
+  color: #f38ba8;
+}
+
+/* Lista desplegable de coincidencias */
+.quest-search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  min-width: 360px;
+  max-height: 380px;
+  border-radius: 12px;
+  background: rgba(20, 22, 30, 0.96);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: dropScaleIn 0.15s ease-out;
+}
+
+.quest-search-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quest-search-dropdown-list {
+  overflow-y: auto;
+  max-height: 340px;
+  padding: 4px;
+}
+
+.quest-search-dropdown-list::-webkit-scrollbar {
+  width: 6px;
+}
+.quest-search-dropdown-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.quest-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 2px;
+}
+
+.quest-search-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.quest-search-item.active {
+  background: rgba(123, 97, 255, 0.18);
+  border: 1px solid rgba(123, 97, 255, 0.4);
+}
+
+.quest-search-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.quest-search-item-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quest-search-item-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quest-search-item-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.badge-title {
+  background: rgba(137, 180, 250, 0.15);
+  color: #89b4fa;
+}
+
+.badge-id {
+  background: rgba(203, 166, 247, 0.15);
+  color: #cba6f7;
+}
+
+.badge-subtitle {
+  background: rgba(166, 227, 161, 0.15);
+  color: #a6e3a1;
+}
+
+.badge-description {
+  background: rgba(249, 226, 175, 0.15);
+  color: #f9e2af;
+}
+
+.badge-task {
+  background: rgba(250, 179, 135, 0.15);
+  color: #fab387;
+}
+
+.badge-reward {
+  background: rgba(243, 139, 168, 0.15);
+  color: #f38ba8;
+}
+
+.quest-search-item-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.quest-search-item-id {
+  font-family: monospace;
+  opacity: 0.8;
+}
+
+.quest-search-item-detail {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+
 
 
