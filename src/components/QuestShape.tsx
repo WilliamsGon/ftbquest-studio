@@ -6,13 +6,17 @@ interface QuestShapeProps {
   size: number;
   isSelected?: boolean;
   stageScale?: number;
+  customStrokeColor?: string;
+  customFillColor?: string;
 }
 
 export const QuestShape: React.FC<QuestShapeProps> = ({
   shape = 'circle',
   size,
   isSelected = false,
-  stageScale = 1
+  stageScale = 1,
+  customStrokeColor,
+  customFillColor
 }) => {
   const normShape = (shape || 'circle').toLowerCase();
   const R = size / 2;
@@ -20,8 +24,8 @@ export const QuestShape: React.FC<QuestShapeProps> = ({
   const selStrokeWidth = Math.max(1.5, 2.0 / stageScale);
 
   // Colores base de marco FTB Quests
-  const fillColor = '#1e1e2e';
-  const strokeColor = '#6c7086';
+  const fillColor = customFillColor || '#1e1e2e';
+  const strokeColor = customStrokeColor || '#6c7086';
   const selStrokeColor = '#ffffff';
 
   // Helper para generar polígonos regulares

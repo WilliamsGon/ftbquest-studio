@@ -4,6 +4,7 @@ import {
   Package, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
   Gift, Terminal, Dices, Layers
 } from 'lucide-react';
+import type { RewardTable } from '../types/rewardTable';
 
 interface QuestTaskRewardManagerProps {
   tasks: any[];
@@ -12,6 +13,8 @@ interface QuestTaskRewardManagerProps {
   onUpdateRewards: (newRewards: any[]) => void;
   onOpenTexturePicker: (targetType: string, onSelect: (val: string) => void) => void;
   onOpenNbtEditor: (title: string, value: any, onSave: (val: any) => void) => void;
+  rewardTables?: RewardTable[];
+  onOpenRewardTableModal?: () => void;
 }
 
 function generateHexId(): string {
@@ -127,7 +130,9 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
   onUpdateTasks,
   onUpdateRewards,
   onOpenTexturePicker,
-  onOpenNbtEditor
+  onOpenNbtEditor,
+  rewardTables = [],
+  onOpenRewardTableModal
 }) => {
   const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isRewardMenuOpen, setIsRewardMenuOpen] = useState(false);
@@ -1134,42 +1139,80 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                     </div>
                   )}
 
-                  {(reward.type === 'random' || reward.type === 'loot') && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Table ID:</label>
-                        <input 
-                          type="text" 
-                          className="input-field" 
-                          style={{ fontSize: '0.8rem', padding: '5px 8px', fontFamily: 'monospace' }}
-                          value={reward.table_id?.value ?? reward.table_id ?? reward.table ?? ''} 
-                          placeholder="ID numérico o ruta de Loot Table"
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (/^\d+$/.test(val)) {
-                              updateRewardField(rIdx, 'table_id', { __type: 'number', value: parseInt(val), suffix: 'L' });
-                            } else {
-                              updateRewardField(rIdx, 'table', val);
-                            }
-                          }}
-                        />
+                  {(reward.type === 'random' || reward.type === 'loot') && (() => {
+                    const currentTableVal = String(reward.table_id?.value ?? reward.table_id ?? reward.table ?? '');
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {rewardTables.length > 0 && (
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <select
+                              className="input-field"
+                              style={{ fontSize: '0.78rem', height: '30px', flex: 1 }}
+                              value={currentTableVal}
+                              onChange={(e) => {
+                                const selectedId = e.target.value;
+                                if (selectedId) {
+                                  updateRewardField(rIdx, 'table_id', selectedId);
+                                }
+                              }}
+                            >
+                              <option value="">-- Seleccionar Tabla de Recompensas ({rewardTables.length}) --</option>
+                              {rewardTables.map(tbl => (
+                                <option key={tbl.id} value={tbl.id}>
+                                  🎁 {tbl.title} (#{tbl.id.slice(0, 8)}...)
+                                </option>
+                              ))}
+                            </select>
+                            {onOpenRewardTableModal && (
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: '0 8px', height: '30px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                onClick={onOpenRewardTableModal}
+                                title="Abrir Gestor de Tablas de Recompensas"
+                              >
+                                <Gift size={13} style={{ color: '#f59e0b' }} />
+                                <span>Tablas</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ID / Ruta:</label>
+                          <input 
+                            type="text" 
+                            className="input-field" 
+                            style={{ fontSize: '0.8rem', padding: '4px 8px', fontFamily: 'monospace' }}
+                            value={currentTableVal} 
+                            placeholder="ID hexadecimal (ej. 51D981D0B7A98548)"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (/^\d+$/.test(val)) {
+                                updateRewardField(rIdx, 'table_id', { __type: 'number', value: parseInt(val), suffix: 'L' });
+                              } else {
+                                updateRewardField(rIdx, 'table_id', val);
+                              }
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Entrega:</label>
+                          <select 
+                            className="input-field"
+                            style={{ fontSize: '0.76rem', padding: '2px 6px', height: '26px' }}
+                            value={reward.auto || 'default'}
+                            onChange={(e) => updateRewardField(rIdx, 'auto', e.target.value === 'default' ? undefined : e.target.value)}
+                          >
+                            <option value="default">Por Defecto</option>
+                            <option value="enabled">Automática</option>
+                            <option value="disabled">Reclamar Manual</option>
+                            <option value="invisible">Invisible</option>
+                          </select>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Entrega:</label>
-                        <select 
-                          className="input-field"
-                          style={{ fontSize: '0.76rem', padding: '2px 6px', height: '26px' }}
-                          value={reward.auto || 'default'}
-                          onChange={(e) => updateRewardField(rIdx, 'auto', e.target.value === 'default' ? undefined : e.target.value)}
-                        >
-                          <option value="default">Por Defecto</option>
-                          <option value="enabled">Automática</option>
-                          <option value="disabled">Reclamar Manual</option>
-                          <option value="invisible">Invisible</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })}

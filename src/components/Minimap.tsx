@@ -16,6 +16,9 @@ interface MinimapProps {
   onNavigate: (newStagePos: { x: number; y: number }) => void;
   searchMatchedIds?: Set<string>;
   activeMatchId?: string | null;
+  isPlayerMode?: boolean;
+  playerCompletedQuestIds?: Set<string>;
+  hiddenQuestIds?: Set<string>;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 world pixels
@@ -49,7 +52,10 @@ export const Minimap: React.FC<MinimapProps> = ({
   dimensions,
   onNavigate,
   searchMatchedIds,
-  activeMatchId
+  activeMatchId,
+  isPlayerMode = false,
+  playerCompletedQuestIds,
+  hiddenQuestIds
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     const saved = localStorage.getItem('ftb_minimap_visible');
@@ -257,18 +263,23 @@ export const Minimap: React.FC<MinimapProps> = ({
     });
 
     // 2. Dibujar Cables de Dependencias
-    ctx.strokeStyle = 'rgba(137, 180, 250, 0.35)';
-    ctx.lineWidth = 1;
     const questMap = new Map<string, any>();
     quests.forEach(q => questMap.set(String(q.id), q));
 
     quests.forEach(q => {
+      const qStrId = String(q.id);
+      if (isPlayerMode && hiddenQuestIds?.has(qStrId)) return;
+      if (isPlayerMode && q.hide_dependency_lines === true) return;
+
       const dstX = toCanvasX(getDValue(q.x) * SCALE_FACTOR);
       const dstY = toCanvasY(getDValue(q.y) * SCALE_FACTOR);
       const deps = extractDependencies(q);
 
       deps.forEach(depId => {
-        const srcQ = questMap.get(String(depId));
+        const depStrId = String(depId);
+        if (isPlayerMode && hiddenQuestIds?.has(depStrId)) return;
+
+        const srcQ = questMap.get(depStrId);
         if (srcQ) {
           const srcX = toCanvasX(getDValue(srcQ.x) * SCALE_FACTOR);
           const srcY = toCanvasY(getDValue(srcQ.y) * SCALE_FACTOR);
@@ -276,6 +287,15 @@ export const Minimap: React.FC<MinimapProps> = ({
           ctx.beginPath();
           ctx.moveTo(srcX, srcY);
           ctx.lineTo(dstX, dstY);
+
+          if (isPlayerMode) {
+            const isSrcCompleted = playerCompletedQuestIds?.has(depStrId);
+            ctx.strokeStyle = isSrcCompleted ? 'rgba(16, 185, 129, 0.7)' : 'rgba(100, 116, 139, 0.3)';
+            ctx.lineWidth = isSrcCompleted ? 1.5 : 1;
+          } else {
+            ctx.strokeStyle = 'rgba(137, 180, 250, 0.35)';
+            ctx.lineWidth = 1;
+          }
           ctx.stroke();
         }
       });
@@ -287,6 +307,8 @@ export const Minimap: React.FC<MinimapProps> = ({
 
     quests.forEach(q => {
       const qStrId = String(q.id);
+      if (isPlayerMode && hiddenQuestIds?.has(qStrId)) return;
+
       const qx = toCanvasX(getDValue(q.x) * SCALE_FACTOR);
       const qy = toCanvasY(getDValue(q.y) * SCALE_FACTOR);
       const isSelected = selectedIds.has(qStrId);
@@ -322,11 +344,22 @@ export const Minimap: React.FC<MinimapProps> = ({
       } else if (isSearchMatch) {
         ctx.fillStyle = '#89dceb'; // Cyan pastel
         ctx.shadowColor = '#89dceb';
-        ctx.shadowBlur = 3;
-      } else if (isSelected) {
-        ctx.fillStyle = '#fab387'; // Naranja acento selección
-        ctx.shadowColor = '#fab387';
         ctx.shadowBlur = 4;
+      } else if (isPlayerMode) {
+        const isCompleted = playerCompletedQuestIds?.has(qStrId);
+        if (isCompleted) {
+          ctx.fillStyle = '#10b981'; // Verde completada
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 4;
+        } else {
+          ctx.fillStyle = '#38bdf8'; // Cyan desbloqueada
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+        }
+      } else if (isSelected) {
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+        ctx.shadowBlur = 5;
       } else if (hasSearchFilter) {
         // Atenuado si hay búsqueda activa y no coincide
         ctx.fillStyle = 'rgba(137, 180, 250, 0.25)';

@@ -2160,6 +2160,74 @@ h1, h2, h3 {
   font-weight: 600;
 }
 
+/* ========================================================
+   Gestor de Tablas de Recompensas (reward_tables)
+   ======================================================== */
+.reward-table-list-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ========================================================
+   Modo Simulación "Vista Jugador"
+   ======================================================== */
+.player-sim-dock {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14, 21, 37, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 28px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 240, 255, 0.15);
+  z-index: 100;
+  user-select: none;
+  max-width: calc(100% - 40px);
+  animation: playerDockPulse 4s infinite ease-in-out;
+}
+
+@keyframes playerDockPulse {
+  0%, 100% { border-color: rgba(0, 240, 255, 0.3); }
+  50% { border-color: rgba(16, 185, 129, 0.5); }
+}
+
+.player-sim-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #00f0ff;
+  padding-right: 6px;
+}
+
+.player-sim-progress-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+
+.player-sim-bar-bg {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.player-sim-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00f0ff, #10b981);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+
 
 
 

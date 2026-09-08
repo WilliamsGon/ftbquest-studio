@@ -11,6 +11,9 @@ import { TexturePickerModal } from './components/TexturePickerModal';
 import { QuestTaskRewardManager } from './components/QuestTaskRewardManager';
 import { ChapterTabBar } from './components/ChapterTabBar';
 import type { ChapterTab } from './types/chapter';
+import { RewardTableModal } from './components/RewardTableModal';
+import type { RewardTable } from './types/rewardTable';
+import { exportModpackToZip } from './utils/zipExporter';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -120,6 +123,42 @@ function App() {
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const currentCameraRef = useRef<{ pos: { x: number; y: number }; scale: number }>({ pos: { x: 0, y: 0 }, scale: 1 });
 
+  // Gestor de Tablas de Recompensas (reward_tables / Loot Crates)
+  const [rewardTables, setRewardTables] = useState<RewardTable[]>(() => {
+    try {
+      const stored = localStorage.getItem('ftb_reward_tables');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error('Error loading reward tables from localStorage:', e);
+    }
+    return [
+      {
+        id: '2B1C94A7E0182C3D',
+        title: 'Recompensas Básicas',
+        icon: 'minecraft:chest',
+        empty_weight: 0,
+        loot_size: 1,
+        order_index: 0,
+        rewards: [
+          { item: 'minecraft:iron_ingot', count: 4, weight: 10.0 },
+          { item: 'minecraft:gold_ingot', count: 2, weight: 5.0 },
+          { item: 'minecraft:diamond', count: 1, weight: 1.0 },
+          { item: 'minecraft:bread', count: 8, weight: 15.0 },
+        ],
+        loot_crate: {
+          string_id: 'basic_crate',
+          color: 0x55ff55,
+          glow: true,
+        },
+      }
+    ];
+  });
+  const [isRewardTableModalOpen, setIsRewardTableModalOpen] = useState<boolean>(false);
+
+  // Modo Vista Jugador (Simulación de desbloqueo en tiempo real)
+  const [isPlayerMode, setIsPlayerMode] = useState<boolean>(false);
+  const [playerCompletedQuestIds, setPlayerCompletedQuestIds] = useState<Set<string>>(new Set());
+
   // Niveles Z (order) únicos presentes en las imágenes de fondo
   const availableZLevels = useMemo(() => {
     const levels = new Set<number>();
@@ -206,6 +245,40 @@ function App() {
     } catch (e) {
       console.error('Error saving pinned assets:', e);
     }
+  };
+
+  const handleUpdateRewardTables = (newTables: RewardTable[]) => {
+    setRewardTables(newTables);
+    try {
+      localStorage.setItem('ftb_reward_tables', JSON.stringify(newTables));
+    } catch (e) {
+      console.error('Error saving reward tables:', e);
+    }
+  };
+
+  const handleTogglePlayerQuestCompletion = (questId: string) => {
+    setPlayerCompletedQuestIds(prev => {
+      const next = new Set(prev);
+      if (next.has(questId)) {
+        next.delete(questId);
+        showToast('Misión marcada como pendiente', 'info');
+      } else {
+        next.add(questId);
+        showToast('¡Misión completada! Desbloqueando ramas dependientes...', 'success');
+      }
+      return next;
+    });
+  };
+
+  const handleResetPlayerProgress = () => {
+    setPlayerCompletedQuestIds(new Set());
+    showToast('Progreso de simulación reiniciado a cero', 'info');
+  };
+
+  const handleCompleteAllPlayerQuests = () => {
+    const allIds = new Set(quests.map(q => String(q.id)));
+    setPlayerCompletedQuestIds(allIds);
+    showToast('Todas las misiones marcadas como completadas', 'success');
   };
 
   // Sincronizar niveles Z visibles cuando cambian los disponibles
@@ -1424,6 +1497,54 @@ function App() {
     showToast(`Exportando ${tabsRef.current.length} capítulos...`, 'success');
   };
 
+  const handleExportZip = async () => {
+    const allChapters: { filename: string; snbtData: any }[] = [];
+
+    if (tabsRef.current.length > 0) {
+      tabsRef.current.forEach(tab => {
+        const isCurrent = tab.id === activeTabIdRef.current;
+        const currentData = isCurrent ? { ...snbtData, quests, images } : { ...tab.snbtData, quests: tab.quests, images: tab.images };
+        const normalizedImages = (currentData.images || []).map((img: any) => {
+          if (img && typeof img.image === 'string') {
+            return { ...img, image: img.image.replace(/\\/g, '/') };
+          }
+          return img;
+        });
+        allChapters.push({
+          filename: tab.filename.endsWith('.snbt') ? tab.filename : `${tab.filename}.snbt`,
+          snbtData: { ...currentData, images: normalizedImages }
+        });
+      });
+    } else if (snbtData) {
+      allChapters.push({
+        filename: filename.endsWith('.snbt') ? filename : `${filename}.snbt`,
+        snbtData: {
+          ...snbtData,
+          quests,
+          images: images.map(img => (img?.image ? { ...img, image: img.image.replace(/\\/g, '/') } : img))
+        }
+      });
+    }
+
+    if (allChapters.length === 0 && rewardTables.length === 0) {
+      showToast('No hay capítulos ni tablas de recompensas para exportar', 'warning');
+      return;
+    }
+
+    try {
+      showToast('Generando archivo .ZIP del Modpack...', 'info');
+      await exportModpackToZip({
+        chapters: allChapters,
+        rewardTables,
+        zipFilename: 'ftbquests-modpack.zip'
+      });
+      showToast('¡Modpack .ZIP exportado exitosamente!', 'success');
+    } catch (err: any) {
+      console.error('Error exportando .ZIP:', err);
+      showToast(`Error al exportar .ZIP: ${err.message || err}`, 'warning');
+    }
+  };
+
   const addQuest = () => {
     const newQuest = {
       id: generateHexId(),
@@ -2361,11 +2482,30 @@ function App() {
               <Download size={16} /> Exportar
             </button>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+              onClick={handleExportZip}
+              disabled={!snbtData && tabs.length === 0}
+              title="Empaquetar y exportar modpack en archivo .ZIP con estructura config/ftbquests/..."
+            >
+              <span>📦</span> Modpack (.zip)
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+              onClick={() => setIsRewardTableModalOpen(true)}
+              title="Gestor visual de Tablas de Recompensas (reward_tables / Loot Crates)"
+            >
+              <span>🎁</span> Tablas ({rewardTables.length})
+            </button>
+          </div>
           {snbtData && (
             <div className="layout-toggle-container" style={{ marginTop: '10px', marginBottom: '4px' }}>
               <button 
-                className={`layout-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
-                onClick={() => setViewMode('map')}
+                className={`layout-toggle-btn ${viewMode === 'map' && !isPlayerMode ? 'active' : ''}`}
+                onClick={() => { setViewMode('map'); setIsPlayerMode(false); }}
                 title="Vista de Mapa (Canvas)"
                 style={{ flex: 1, justifyContent: 'center' }}
               >
@@ -2373,11 +2513,22 @@ function App() {
               </button>
               <button 
                 className={`layout-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                onClick={() => setViewMode('table')}
+                onClick={() => { setViewMode('table'); setIsPlayerMode(false); }}
                 title="Vista de Tabla"
                 style={{ flex: 1, justifyContent: 'center' }}
               >
                 <TableIcon size={14} /> Tabla
+              </button>
+              <button 
+                className={`layout-toggle-btn ${isPlayerMode ? 'active' : ''}`}
+                onClick={() => {
+                  if (viewMode !== 'map') setViewMode('map');
+                  setIsPlayerMode(!isPlayerMode);
+                }}
+                title="Modo Vista Jugador (Simulación interactiva de desbloqueo)"
+                style={{ flex: 1, justifyContent: 'center', color: isPlayerMode ? '#10b981' : undefined }}
+              >
+                <span>👁️</span> Jugador
               </button>
             </div>
           )}
@@ -2559,6 +2710,7 @@ function App() {
             onOpenFiles={() => fileInputRef.current?.click()}
             onExportActive={handleExport}
             onExportAll={handleExportAll}
+            onExportZip={handleExportZip}
           />
         )}
 
@@ -2615,6 +2767,12 @@ function App() {
               totalOpenTabsCount={tabs.length}
               onBatchReplace={handleBatchReplace}
               onReplaceSingle={handleReplaceSingle}
+              isPlayerMode={isPlayerMode}
+              setIsPlayerMode={setIsPlayerMode}
+              playerCompletedQuestIds={playerCompletedQuestIds}
+              onTogglePlayerQuestCompletion={handleTogglePlayerQuestCompletion}
+              onResetPlayerProgress={handleResetPlayerProgress}
+              onCompleteAllPlayerQuests={handleCompleteAllPlayerQuests}
             />
 
             {/* Cajón deslizable (Drawer) del Portapapeles */}
@@ -4192,6 +4350,8 @@ function App() {
                 <QuestTaskRewardManager
                   tasks={tasksArray}
                   rewards={rewardsArray}
+                  rewardTables={rewardTables}
+                  onOpenRewardTableModal={() => setIsRewardTableModalOpen(true)}
                   onUpdateTasks={(newTasks) => updateQuest(selection.id as string, { tasks: newTasks })}
                   onUpdateRewards={(newRewards) => updateQuest(selection.id as string, { rewards: newRewards })}
                   onOpenTexturePicker={(targetType, onSelect) => setTexturePicker({
@@ -4289,6 +4449,21 @@ function App() {
         title={texturePicker.title}
         targetType={texturePicker.targetType}
         onSelect={texturePicker.onSelect}
+      />
+    )}
+
+    {isRewardTableModalOpen && (
+      <RewardTableModal
+        isOpen={isRewardTableModalOpen}
+        onClose={() => setIsRewardTableModalOpen(false)}
+        rewardTables={rewardTables}
+        onUpdateRewardTables={handleUpdateRewardTables}
+        onOpenTexturePicker={(targetType, onSelect) => setTexturePicker({
+          isOpen: true,
+          targetType: targetType as any,
+          title: 'Seleccionar Ítem para Recompensa',
+          onSelect
+        })}
       />
     )}
 

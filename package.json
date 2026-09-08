@@ -11,8 +11,10 @@
     "extract-textures": "node scripts/extract-textures.js"
   },
   "dependencies": {
+    "@types/jszip": "^3.4.0",
     "@types/uuid": "^10.0.0",
     "adm-zip": "^0.5.18",
+    "jszip": "^3.10.1",
     "konva": "^10.3.0",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",

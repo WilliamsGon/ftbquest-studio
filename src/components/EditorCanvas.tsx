@@ -56,6 +56,12 @@ interface CanvasProps {
     fields: ReplaceFieldsConfig
   ) => void;
   onReplaceSingle?: (match: SearchMatch, replaceWith: string) => void;
+  isPlayerMode?: boolean;
+  setIsPlayerMode?: (mode: boolean) => void;
+  playerCompletedQuestIds?: Set<string>;
+  onTogglePlayerQuestCompletion?: (questId: string) => void;
+  onResetPlayerProgress?: () => void;
+  onCompleteAllPlayerQuests?: () => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels
@@ -214,7 +220,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   setConnectionLineStyle: propSetConnectionLineStyle,
   totalOpenTabsCount = 1,
   onBatchReplace,
-  onReplaceSingle
+  onReplaceSingle,
+  isPlayerMode = false,
+  setIsPlayerMode,
+  playerCompletedQuestIds,
+  onTogglePlayerQuestCompletion,
+  onResetPlayerProgress,
+  onCompleteAllPlayerQuests
 }) => {
   const [isAutoLayoutMenuOpen, setIsAutoLayoutMenuOpen] = useState(false);
   const [stageScale, setStageScale] = useState(initialStageScale ?? 1);
@@ -246,6 +258,72 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     return localStorage.getItem('ftb_smart_guides') !== 'false';
   });
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
+
+  // Estado de cada misión en modo vista jugador (completada, desbloqueada, visible)
+  const questPlayerStates = useMemo(() => {
+    if (!isPlayerMode) {
+      return new Map<string, { isCompleted: boolean; isUnlocked: boolean; isVisible: boolean }>();
+    }
+    const completedSet = playerCompletedQuestIds || new Set<string>();
+    const stateMap = new Map<string, { isCompleted: boolean; isUnlocked: boolean; isVisible: boolean }>();
+
+    quests.forEach(q => {
+      const qId = String(q.id);
+      const isCompleted = completedSet.has(qId);
+
+      const rawDeps = q.dependencies || [];
+      const deps: string[] = rawDeps.map((d: any) => {
+        if (typeof d === 'string') return d;
+        if (typeof d === 'object' && d !== null) {
+          return d.id || d.quest || '';
+        }
+        return String(d);
+      }).filter(Boolean);
+
+      let isUnlocked = true;
+      if (deps.length > 0) {
+        const completedDepsCount = deps.filter(d => completedSet.has(String(d))).length;
+        const minRequired = q.min_required_dependencies !== undefined ? Number(q.min_required_dependencies) : 0;
+        const reqType = q.dependency_requirement || 'all_completed';
+
+        if (minRequired > 0) {
+          isUnlocked = completedDepsCount >= minRequired;
+        } else if (reqType === 'one_completed' || reqType === 'one_started') {
+          isUnlocked = completedDepsCount >= 1;
+        } else {
+          isUnlocked = completedDepsCount === deps.length;
+        }
+      }
+
+      let isVisible = true;
+      if (!isCompleted && !isUnlocked) {
+        if (q.hide_until_deps_complete || q.invisible) {
+          isVisible = false;
+        }
+      }
+
+      stateMap.set(qId, { isCompleted, isUnlocked, isVisible });
+    });
+
+    return stateMap;
+  }, [isPlayerMode, playerCompletedQuestIds, quests]);
+
+  const hiddenQuestIds = useMemo(() => {
+    if (!isPlayerMode) return new Set<string>();
+    const hidden = new Set<string>();
+    questPlayerStates.forEach((state, id) => {
+      if (!state.isVisible) hidden.add(id);
+    });
+    return hidden;
+  }, [isPlayerMode, questPlayerStates]);
+
+  const playerProgress = useMemo(() => {
+    if (!isPlayerMode || quests.length === 0) return { completed: 0, total: 0, pct: 0 };
+    const completedCount = quests.filter(q => playerCompletedQuestIds?.has(String(q.id))).length;
+    const total = quests.length;
+    const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+    return { completed: completedCount, total, pct };
+  }, [isPlayerMode, quests, playerCompletedQuestIds]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -569,6 +647,51 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         cursor: activeTool === 'pan' ? (isPanning ? 'grabbing' : 'grab') : 'default'
       }}
     >
+      {/* Barra Flotante de Simulación "Vista Jugador" */}
+      {isPlayerMode && (
+        <div className="player-sim-dock">
+          <div className="player-sim-badge">
+            <span>👁️</span>
+            <span>VISTA JUGADOR</span>
+          </div>
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.18)', margin: '0 4px' }} />
+          <div className="player-sim-progress-box">
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#cbd5e1' }}>
+              <span>Progreso:</span>
+              <span style={{ fontWeight: 700, color: '#10b981' }}>{playerProgress.completed} / {playerProgress.total} ({playerProgress.pct}%)</span>
+            </div>
+            <div className="player-sim-bar-bg">
+              <div className="player-sim-bar-fill" style={{ width: `${playerProgress.pct}%` }} />
+            </div>
+          </div>
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.18)', margin: '0 4px' }} />
+          <button
+            className="btn btn-secondary"
+            style={{ padding: '3px 8px', fontSize: '0.73rem', gap: '4px' }}
+            onClick={() => onResetPlayerProgress?.()}
+            title="Reiniciar progreso de todas las misiones"
+          >
+            <span>🔄</span> Reiniciar
+          </button>
+          <button
+            className="btn btn-secondary"
+            style={{ padding: '3px 8px', fontSize: '0.73rem', gap: '4px' }}
+            onClick={() => onCompleteAllPlayerQuests?.()}
+            title="Marcar todas las misiones como completadas"
+          >
+            <span>⚡</span> Completar Todo
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '3px 10px', fontSize: '0.73rem', background: '#e11d48', borderColor: '#be123c', gap: '4px' }}
+            onClick={() => setIsPlayerMode?.(false)}
+            title="Salir del modo simulación de jugador y volver al editor"
+          >
+            <span>✕</span> Salir
+          </button>
+        </div>
+      )}
+
       {/* Barra de Herramientas Flotante (Dock segmentado compacto estilo Figma) */}
       <div className="canvas-toolbar">
         {/* Grupo 1: Herramientas de Navegación del Cursor */}
@@ -807,6 +930,19 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             <span style={{ fontSize: '0.85rem' }}>🔄</span>
           </button>
         </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Grupo 7: Vista Jugador (Simulación) */}
+        <button
+          className={`toolbar-btn icon-only ${isPlayerMode ? 'active' : ''}`}
+          onClick={() => setIsPlayerMode?.(!isPlayerMode)}
+          title={isPlayerMode ? "Salir de Modo Vista Jugador" : "Entrar a Modo Vista Jugador (Simular desbloqueo)"}
+          aria-label="Vista Jugador"
+          style={isPlayerMode ? { background: 'rgba(16, 185, 129, 0.25)', borderColor: '#10b981', color: '#10b981' } : {}}
+        >
+          <span style={{ fontSize: '0.95rem' }}>👁️</span>
+        </button>
       </div>
 
       {/* Buscador y Reemplazo Rápido en el Lienzo (Ctrl + F / Ctrl + H) */}
@@ -1326,6 +1462,10 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                 const depQuest = quests.find(dq => dq.id === depId);
                 if (!depQuest) return null;
 
+                if (isPlayerMode && (hiddenQuestIds.has(String(depId)) || hiddenQuestIds.has(String(q.id)))) {
+                  return null;
+                }
+
                 const isSrcSelected = selection.items.some(item => item.type === 'quest' && item.id === depQuest.id);
                 const srcX = getDValue(depQuest.x) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.x : 0);
                 const srcY = getDValue(depQuest.y) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.y : 0);
@@ -1353,7 +1493,22 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   let opacity = 0.75;
                   let dash: number[] | undefined = undefined;
 
-                  if (isDepSelected) {
+                  if (isPlayerMode) {
+                    const isSrcCompleted = playerCompletedQuestIds?.has(String(depId)) ?? false;
+                    const isDstUnlocked = questPlayerStates.get(String(q.id))?.isUnlocked ?? false;
+                    const isDstCompleted = playerCompletedQuestIds?.has(String(q.id)) ?? false;
+
+                    if (isSrcCompleted && (isDstUnlocked || isDstCompleted)) {
+                      arrowColor = '#10b981';
+                      arrowWidth = 3.0;
+                      opacity = 0.95;
+                    } else {
+                      arrowColor = '#475569';
+                      arrowWidth = 2.0;
+                      opacity = 0.35;
+                      dash = [4, 4];
+                    }
+                  } else if (isDepSelected) {
                     arrowColor = '#fbbf24';
                     arrowWidth = 4.5;
                     opacity = 1.0;
@@ -1407,14 +1562,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         pointerLength={12 / stageScale}
                         pointerWidth={10 / stageScale}
                         onMouseEnter={(e) => {
+                          if (isPlayerMode) return;
                           const stage = e.target.getStage();
                           if (stage) stage.container().style.cursor = 'pointer';
                         }}
                         onMouseLeave={(e) => {
+                          if (isPlayerMode) return;
                           const stage = e.target.getStage();
                           if (stage) stage.container().style.cursor = 'default';
                         }}
                         onClick={(e) => {
+                          if (isPlayerMode) return;
                           e.cancelBubble = true;
                           setSelection({
                             type: 'dependency',
@@ -1450,6 +1608,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             })}
             
             {quests.map((q) => {
+              const qIdStr = String(q.id);
+              const playerState = questPlayerStates.get(qIdStr);
+              if (isPlayerMode && playerState && !playerState.isVisible) {
+                return null;
+              }
+
               const x = getDValue(q.x) * SCALE_FACTOR;
               const y = getDValue(q.y) * SCALE_FACTOR;
               const sizeVal = getDValue(q.size) || 1.0;
@@ -1473,11 +1637,16 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   key={q.id}
                   x={currentX}
                   y={currentY}
-                  opacity={hasSearchFilter && !isSearchMatch ? 0.28 : 1.0}
-                  draggable={!isLocked}
+                  opacity={
+                    isPlayerMode
+                      ? (!playerState?.isUnlocked && !playerState?.isCompleted ? 0.42 : 1.0)
+                      : (hasSearchFilter && !isSearchMatch ? 0.28 : 1.0)
+                  }
+                  draggable={!isLocked && !isPlayerMode}
                   onMouseEnter={() => setHoveredQuestId(q.id)}
                   onMouseLeave={() => setHoveredQuestId(prev => prev === q.id ? null : prev)}
                   onMouseUp={(e) => {
+                    if (isPlayerMode) return;
                     if (wireDrag && wireDrag.sourceQuestId !== q.id) {
                       e.cancelBubble = true;
                       onConnectQuests?.(wireDrag.sourceQuestId, q.id);
@@ -1485,6 +1654,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onContextMenu={(e) => {
+                    if (isPlayerMode) return;
                     e.evt.preventDefault();
                     if (onQuestContextMenu) {
                       onQuestContextMenu(q.id, e.evt.clientX, e.evt.clientY);
@@ -1493,6 +1663,12 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   onClick={(e) => {
                     if (e.evt.button !== 0) return; // Solo clic izquierdo
                     e.cancelBubble = true;
+                    if (isPlayerMode) {
+                      if (playerState?.isUnlocked || playerState?.isCompleted) {
+                        onTogglePlayerQuestCompletion?.(qIdStr);
+                      }
+                      return;
+                    }
                     if (e.evt.shiftKey) {
                       const isAlreadySelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                       let newItems = [];
@@ -1511,7 +1687,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragStart={(e) => {
-                    if (isLocked) {
+                    if (isLocked || isPlayerMode) {
                       e.target.stopDrag();
                       return;
                     }
@@ -1746,8 +1922,18 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   <QuestShape 
                     shape={q.shape} 
                     size={nodeSize} 
-                    isSelected={isSelected} 
+                    isSelected={isPlayerMode ? false : isSelected} 
                     stageScale={stageScale} 
+                    customStrokeColor={
+                      isPlayerMode
+                        ? (playerState?.isCompleted ? '#10b981' : (playerState?.isUnlocked ? '#00f0ff' : '#475569'))
+                        : undefined
+                    }
+                    customFillColor={
+                      isPlayerMode && !playerState?.isUnlocked && !playerState?.isCompleted
+                        ? '#0f172a'
+                        : undefined
+                    }
                   />
                   <FtbTexture icon={iconObj} width={nodeSize * 0.72} height={nodeSize * 0.72} />
                   
@@ -1765,7 +1951,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     shadowOpacity={1}
                   />
 
-                  {isLocked && (
+                  {isLocked && !isPlayerMode && (
                     <Text
                       text="🔒"
                       fontSize={14 / stageScale}
@@ -1774,8 +1960,47 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     />
                   )}
 
+                  {/* Insignia de Estado en Modo Vista Jugador (Completada o Bloqueada) */}
+                  {isPlayerMode && playerState?.isCompleted && (
+                    <Group x={nodeSize / 2 - 2} y={-nodeSize / 2 + 2} listening={false}>
+                      <Circle
+                        radius={8.5 / stageScale}
+                        fill="#10b981"
+                        stroke="#ffffff"
+                        strokeWidth={1.5 / stageScale}
+                        shadowColor="#10b981"
+                        shadowBlur={8}
+                      />
+                      <Text
+                        text="✓"
+                        fontSize={10.5 / stageScale}
+                        fill="#ffffff"
+                        fontStyle="bold"
+                        offsetX={4 / stageScale}
+                        offsetY={5.5 / stageScale}
+                      />
+                    </Group>
+                  )}
+
+                  {isPlayerMode && !playerState?.isCompleted && !playerState?.isUnlocked && (
+                    <Group x={nodeSize / 2 - 2} y={-nodeSize / 2 + 2} listening={false}>
+                      <Circle
+                        radius={8.5 / stageScale}
+                        fill="#1e293b"
+                        stroke="#475569"
+                        strokeWidth={1.2 / stageScale}
+                      />
+                      <Text
+                        text="🔒"
+                        fontSize={8.5 / stageScale}
+                        offsetX={4 / stageScale}
+                        offsetY={5 / stageScale}
+                      />
+                    </Group>
+                  )}
+
                   {/* Puerto / Ancla interactiva para conectar dependencias (Wire Dragging) */}
-                  {(isSelected || hoveredQuestId === q.id) && !isLocked && (
+                  {(isSelected || hoveredQuestId === q.id) && !isLocked && !isPlayerMode && (
                     <Group
                       x={nodeSize / 2 + 10}
                       y={0}
@@ -1805,7 +2030,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   )}
 
                   {/* Indicador de Ciclo en la Misión */}
-                  {cycleNodeIds.has(q.id) && (
+                  {!isPlayerMode && cycleNodeIds.has(q.id) && (
                     <Group x={nodeSize / 2} y={-nodeSize / 2}>
                       <Circle radius={8 / stageScale} fill="#f38ba8" stroke="#ffffff" strokeWidth={1.2 / stageScale} />
                       <Text text="⚠️" fontSize={9 / stageScale} offsetX={5 / stageScale} offsetY={5 / stageScale} />
@@ -1813,7 +2038,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   )}
 
                   {/* Indicador de Dependencia Rota en la Misión */}
-                  {brokenDepQuestIds.has(q.id) && (
+                  {!isPlayerMode && brokenDepQuestIds.has(q.id) && (
                     <Group x={-nodeSize / 2} y={-nodeSize / 2}>
                       <Circle radius={8 / stageScale} fill="#fab387" stroke="#ffffff" strokeWidth={1.2 / stageScale} />
                       <Text text="❓" fontSize={9 / stageScale} offsetX={4 / stageScale} offsetY={5 / stageScale} />
@@ -1929,6 +2154,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         onNavigate={(newPos) => setStagePos(newPos)}
         searchMatchedIds={matchedQuestIds}
         activeMatchId={activeMatchQuestId}
+        isPlayerMode={isPlayerMode}
+        playerCompletedQuestIds={playerCompletedQuestIds}
+        hiddenQuestIds={hiddenQuestIds}
       />
     </div>
   );

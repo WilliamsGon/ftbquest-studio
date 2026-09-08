@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, X, Upload, Download, BookOpen, FileText, ChevronDown } from 'lucide-react';
+import { Plus, X, Upload, Download, BookOpen, FileText, ChevronDown, Package } from 'lucide-react';
 import type { ChapterTab } from '../types/chapter';
 
 interface ChapterTabBarProps {
@@ -11,6 +11,7 @@ interface ChapterTabBarProps {
   onOpenFiles: () => void;
   onExportActive: () => void;
   onExportAll: () => void;
+  onExportZip: () => void;
 }
 
 export const ChapterTabBar: React.FC<ChapterTabBarProps> = ({
@@ -21,7 +22,8 @@ export const ChapterTabBar: React.FC<ChapterTabBarProps> = ({
   onNewBlankTab,
   onOpenFiles,
   onExportActive,
-  onExportAll
+  onExportAll,
+  onExportZip
 }) => {
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -163,7 +165,23 @@ export const ChapterTabBar: React.FC<ChapterTabBarProps> = ({
             </button>
 
             {isExportMenuOpen && (
-              <div className="chapter-tab-dropdown glass-panel right-aligned">
+              <div className="chapter-tab-dropdown">
+                {onExportZip && (
+                  <button
+                    type="button"
+                    className="chapter-tab-dropdown-item"
+                    style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', fontWeight: 600 }}
+                    onClick={() => {
+                      setIsExportMenuOpen(false);
+                      onExportZip();
+                    }}
+                    title="Descargar todos los capítulos y tablas de recompensas en estructura config/ftbquests/quests/..."
+                  >
+                    <Package size={14} style={{ color: '#fbbf24' }} />
+                    <span>Descargar Modpack (.zip)</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="chapter-tab-dropdown-item"
@@ -173,7 +191,7 @@ export const ChapterTabBar: React.FC<ChapterTabBarProps> = ({
                   }}
                 >
                   <Download size={14} className="text-accent" />
-                  <span>Exportar Capítulo Actual</span>
+                  <span>Exportar Capítulo Actual (.snbt)</span>
                 </button>
                 {tabs.length > 1 && (
                   <button
@@ -185,7 +203,7 @@ export const ChapterTabBar: React.FC<ChapterTabBarProps> = ({
                     }}
                   >
                     <Download size={14} style={{ color: '#a6e3a1' }} />
-                    <span>Exportar Todos ({tabs.length} capítulos)</span>
+                    <span>Exportar Todos (.snbt separados)</span>
                   </button>
                 )}
               </div>
