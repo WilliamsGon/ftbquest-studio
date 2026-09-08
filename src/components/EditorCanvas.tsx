@@ -4,6 +4,7 @@ import useImage from 'use-image';
 import { MousePointer, Hand, Magnet, Sparkles, ChevronDown } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
+import { Minimap } from './Minimap';
 
 interface CanvasProps {
   quests: any[];
@@ -1359,6 +1360,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
           );
         })()}
       </Stage>
+
+      {/* Mini-mapa Interactivo (Radar / Navigator) */}
+      <Minimap
+        quests={quests}
+        images={images}
+        selection={selection}
+        stageScale={stageScale}
+        stagePos={stagePos}
+        dimensions={dimensions}
+        onNavigate={(newPos) => setStagePos(newPos)}
+      />
     </div>
   );
 };
