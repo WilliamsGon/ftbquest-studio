@@ -64,6 +64,7 @@ interface CanvasProps {
   onTogglePlayerQuestCompletion?: (questId: string) => void;
   onResetPlayerProgress?: () => void;
   onCompleteAllPlayerQuests?: () => void;
+  onOpenSimulatorDashboard?: () => void;
 }
 
 const SCALE_FACTOR = 40; // 1.0d = 40 pixels

@@ -2736,6 +2736,47 @@ function App() {
               <span>🌐</span> Traducción
             </button>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              onClick={() => setIsDoctorModalOpen(true)}
+              title="Doctor del Modpack: Auditoría de integridad y auto-reparación"
+            >
+              <span>🩺</span> Doctor
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              onClick={() => setIsCommandModalOpen(true)}
+              title="Generador de Comandos de Prueba y Scripts KubeJS"
+            >
+              <span>🧪</span> KubeJS
+            </button>
+          </div>
+          <button
+            className="btn btn-secondary"
+            style={{
+              width: '100%',
+              marginTop: '6px',
+              padding: '7px 8px',
+              fontSize: '0.78rem',
+              gap: '6px',
+              justifyContent: 'center',
+              background: isPlayerMode ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.1)',
+              borderColor: '#10b981',
+              color: '#a6e3a1',
+              fontWeight: 700
+            }}
+            onClick={() => {
+              if (viewMode !== 'map') setViewMode('map');
+              setIsPlayerMode(true);
+              setIsSimulatorModalOpen(true);
+            }}
+            title="Abrir Simulador de Progresión (Playtesting de inventario, XP y tablas de loot)"
+          >
+            <span>🎮</span> Simulador de Progresión
+          </button>
           {snbtData && (
             <div className="layout-toggle-container" style={{ marginTop: '10px', marginBottom: '4px' }}>
               <button 
@@ -2763,7 +2804,7 @@ function App() {
                 title="Modo Vista Jugador (Simulación interactiva de desbloqueo)"
                 style={{ flex: 1, justifyContent: 'center', color: isPlayerMode ? '#10b981' : undefined }}
               >
-                <span>👁️</span> Jugador
+                <span>🎮</span> Simulador
               </button>
             </div>
           )}
@@ -3008,6 +3049,7 @@ function App() {
               onTogglePlayerQuestCompletion={handleTogglePlayerQuestCompletion}
               onResetPlayerProgress={handleResetPlayerProgress}
               onCompleteAllPlayerQuests={handleCompleteAllPlayerQuests}
+              onOpenSimulatorDashboard={() => setIsSimulatorModalOpen(true)}
             />
 
             {/* Cajón deslizable (Drawer) del Portapapeles */}
