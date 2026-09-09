@@ -2972,6 +2972,8 @@ function App() {
             minWidth: `${rightSidebarWidth}px`,
             maxWidth: `${rightSidebarWidth}px`,
             position: 'relative',
+            overflowX: 'hidden',
+            boxSizing: 'border-box',
             transition: isResizingRightSidebar ? 'none' : 'width 0.15s ease'
           }}
         >
@@ -3876,12 +3878,12 @@ function App() {
                       </option>
                     )}
                   </select>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Hex ID:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', width: '100%', minWidth: 0 }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Hex ID:</span>
                     <input 
                       type="text" 
                       className="input-field" 
-                      style={{ fontSize: '0.75rem', padding: '2px 6px', fontFamily: 'monospace', height: '24px' }}
+                      style={{ fontSize: '0.75rem', padding: '2px 6px', fontFamily: 'monospace', height: '24px', flex: 1, minWidth: 0 }}
                       placeholder="Vacío o Hex (ej. 7E48F1A2D091B3C4)"
                       value={getDValue(snbtData.group) || ''}
                       onChange={(e) => {

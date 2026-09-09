@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
+  color-scheme: dark;
   --bg-color: #0f1115;
   --panel-bg: rgba(22, 25, 33, 0.7);
   --panel-border: rgba(255, 255, 255, 0.05);
@@ -144,6 +145,9 @@ h1, h2, h3 {
   padding: 20px;
   flex-grow: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -223,7 +227,7 @@ h1, h2, h3 {
 }
 
 .input-field {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.28);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   padding: 8px 12px;
@@ -231,11 +235,50 @@ h1, h2, h3 {
   font-family: inherit;
   font-size: 0.9rem;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   transition: border-color 0.2s;
 }
 .input-field:focus {
   outline: none;
   border-color: var(--accent-color);
+}
+
+/* Soporte estricto de alto contraste para desplegables (select, option, optgroup) en Windows/Chromium */
+select.input-field,
+select {
+  color-scheme: dark;
+  background-color: #1a1d26;
+  color: #f1f5f9;
+}
+
+select.input-field option,
+select option,
+.input-field option {
+  background-color: #181a22 !important;
+  color: #f1f5f9 !important;
+  padding: 6px 10px;
+}
+
+select.input-field optgroup,
+select optgroup,
+.input-field optgroup {
+  background-color: #111319 !important;
+  color: #a5b4fc !important;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 6px 8px;
+}
+
+/* Indicador de flecha para inputs con datalists integrados */
+input::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 .row {
