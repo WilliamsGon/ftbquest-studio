@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin, Globe, ExternalLink, Maximize2, Terminal } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Globe, ExternalLink, Maximize2, Terminal } from 'lucide-react';
 import { MinecraftTextEditorModal } from './components/MinecraftTextEditorModal';
 import { QuestSimulatorModal } from './components/QuestSimulatorModal';
 import { ModpackDoctorModal } from './components/ModpackDoctorModal';
@@ -26,6 +26,7 @@ import type { RewardTable } from './types/rewardTable';
 import { ChapterGroupModal } from './components/ChapterGroupModal';
 import { AnalyticsDashboardModal } from './components/AnalyticsDashboardModal';
 import { BlueprintLibraryModal } from './components/BlueprintLibraryModal';
+import { PinnedPrefabsModal } from './components/PinnedPrefabsModal';
 import type { Blueprint, BlueprintCategory } from './types/blueprints';
 import { instantiateBlueprint, saveCustomBlueprint } from './utils/blueprintEngine';
 import { TranslationManagerModal } from './components/TranslationManagerModal';
@@ -1453,15 +1454,15 @@ function App() {
     const groupCenterX = hasCoords ? (minX + maxX) / 2 : 0;
     const groupCenterY = hasCoords ? (minY + maxY) / 2 : 0;
 
-    // 2. Búsqueda de centro de destino
-    let targetX = 0;
-    let targetY = 0;
-    if (quests.length > 0) {
-      const sumX = quests.reduce((acc, q) => acc + (getDValue(q.x) ?? 0), 0);
-      const sumY = quests.reduce((acc, q) => acc + (getDValue(q.y) ?? 0), 0);
-      targetX = sumX / quests.length;
-      targetY = sumY / quests.length;
-    }
+    // 2. Búsqueda de centro de destino centrado en la vista de la cámara actual
+    const cam = currentCameraRef.current;
+    const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const scale = cam.scale || 1;
+    const posX = cam.pos?.x ?? (viewportW / 2);
+    const posY = cam.pos?.y ?? (viewportH / 2);
+    const targetX = (viewportW / 2 - posX) / (scale * 40);
+    const targetY = (viewportH / 2 - posY) / (scale * 40);
 
     const dx = targetX - groupCenterX;
     const dy = targetY - groupCenterY;
@@ -3059,90 +3060,6 @@ function App() {
               onOpenSimulatorDashboard={() => setIsSimulatorModalOpen(true)}
             />
 
-            {/* Cajón deslizable (Drawer) del Portapapeles */}
-            {isPinnedDrawerOpen && (
-              <div className="pinned-assets-drawer">
-                <div className="pinned-assets-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Pin size={18} color="var(--accent-primary)" />
-                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Prefabs Anclados</h3>
-                  </div>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ padding: '4px 8px', height: 'auto' }}
-                    onClick={() => setIsPinnedDrawerOpen(false)}
-                    title="Cerrar cajón"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="pinned-assets-list">
-                  {pinnedAssets.length === 0 ? (
-                    <div className="pinned-empty">
-                      <p>No tienes elementos anclados todavía.</p>
-                      <small>Selecciona misiones o decoraciones y presiona "📌 Anclar al Portapapeles" en el menú contextual o en el inspector.</small>
-                    </div>
-                  ) : (
-                    pinnedAssets.map((asset) => {
-                      let typeLabel = 'Mixto';
-                      let typeClass = 'mixed';
-                      if (asset.quests.length === 1 && asset.images.length === 0) {
-                        typeLabel = 'Misión';
-                        typeClass = 'quest';
-                      } else if (asset.quests.length === 0 && asset.images.length === 1) {
-                        typeLabel = 'Imagen';
-                        typeClass = 'image';
-                      }
-
-                      return (
-                        <div key={asset.id} className="pinned-asset-card">
-                          <div className="pinned-asset-meta">
-                            <span className={`pinned-asset-type-badge ${typeClass}`}>
-                              {typeLabel}
-                            </span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-                              {new Date(asset.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <h4 className="pinned-asset-name">{asset.title}</h4>
-                          {asset.quests.length > 0 && asset.quests.map((q: any) => (
-                            <p key={q.id} className="pinned-asset-detail">
-                              🔹 Misión: {getDValue(q.title) || q.id}
-                            </p>
-                          ))}
-                          {asset.images.length > 0 && asset.images.map((img: any, idx: number) => (
-                            <p key={idx} className="pinned-asset-detail">
-                              🖼️ Imagen: {img.image ? img.image.substring(img.image.lastIndexOf('/') + 1) : 'Decoración'}
-                            </p>
-                          ))}
-                          
-                          <div className="pinned-asset-actions">
-                            <button 
-                              className="pinned-asset-btn-paste"
-                              onClick={() => pastePinnedAsset(asset)}
-                              title="Pegar este activo en el centro del mapa"
-                            >
-                              📋 Pegar
-                            </button>
-                            <button 
-                              className="pinned-asset-btn-delete"
-                              onClick={() => {
-                                const nextAssets = pinnedAssets.filter((a) => a.id !== asset.id);
-                                savePinnedAssets(nextAssets);
-                              }}
-                              title="Desanclar elemento"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <TableView 
@@ -5017,6 +4934,25 @@ function App() {
         onInsertBlueprint={handleInsertBlueprint}
         selectedQuestsCount={selection.items.filter(i => i.type === 'quest').length}
         onSaveSelectionAsBlueprint={handleSaveSelectionAsBlueprint}
+      />
+    )}
+
+    {isPinnedDrawerOpen && (
+      <PinnedPrefabsModal
+        isOpen={isPinnedDrawerOpen}
+        onClose={() => setIsPinnedDrawerOpen(false)}
+        pinnedAssets={pinnedAssets}
+        onPasteAsset={(asset) => {
+          pastePinnedAsset(asset);
+          setIsPinnedDrawerOpen(false);
+        }}
+        onDeleteAsset={(assetId) => {
+          const nextAssets = pinnedAssets.filter(a => a.id !== assetId);
+          savePinnedAssets(nextAssets);
+        }}
+        onClearAll={() => {
+          savePinnedAssets([]);
+        }}
       />
     )}
 
