@@ -14,6 +14,7 @@ import type { ChapterTab } from './types/chapter';
 import { RewardTableModal } from './components/RewardTableModal';
 import type { RewardTable } from './types/rewardTable';
 import { ChapterGroupModal } from './components/ChapterGroupModal';
+import { AnalyticsDashboardModal } from './components/AnalyticsDashboardModal';
 import type { ChapterGroup } from './types/chapterGroup';
 import { exportModpackToZip } from './utils/zipExporter';
 import { MinecraftTextToolbar } from './components/MinecraftTextToolbar';
@@ -178,6 +179,7 @@ function App() {
     ];
   });
   const [isChapterGroupModalOpen, setIsChapterGroupModalOpen] = useState<boolean>(false);
+  const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
 
   // Referencias para manipulación de cursor/selección en barras de formato de texto Minecraft
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -2575,10 +2577,10 @@ function App() {
               <span>📦</span> Modpack (.zip)
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '6px' }}>
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
               onClick={() => setIsRewardTableModalOpen(true)}
               title="Gestor visual de Tablas de Recompensas (reward_tables / Loot Crates)"
             >
@@ -2586,11 +2588,19 @@ function App() {
             </button>
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
               onClick={() => setIsChapterGroupModalOpen(true)}
               title="Gestor visual de Grupos de Capítulos (chapter_groups.snbt)"
             >
               <span>📁</span> Grupos ({chapterGroups.length})
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              onClick={() => setIsAnalyticsModalOpen(true)}
+              title="Tablero de Balance y Estadísticas del Modpack (Analytics Dashboard)"
+            >
+              <span>📊</span> Balance
             </button>
           </div>
           {snbtData && (
@@ -4746,6 +4756,22 @@ function App() {
           title: 'Seleccionar Ítem para Recompensa',
           onSelect
         })}
+      />
+    )}
+
+    {isAnalyticsModalOpen && (
+      <AnalyticsDashboardModal
+        isOpen={isAnalyticsModalOpen}
+        onClose={() => setIsAnalyticsModalOpen(false)}
+        chapters={tabs}
+        rewardTables={rewardTables}
+        chapterGroups={chapterGroups}
+        onNavigateToQuest={(chapterId, questId) => {
+          handleSelectTab(chapterId);
+          setSelection({ type: 'quest', ids: [questId], items: [{ type: 'quest', id: questId }] });
+          if (viewMode !== 'map') setViewMode('map');
+          setIsAnalyticsModalOpen(false);
+        }}
       />
     )}
 
