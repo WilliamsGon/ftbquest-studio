@@ -15,6 +15,12 @@ import { RewardTableModal } from './components/RewardTableModal';
 import type { RewardTable } from './types/rewardTable';
 import { ChapterGroupModal } from './components/ChapterGroupModal';
 import { AnalyticsDashboardModal } from './components/AnalyticsDashboardModal';
+import { BlueprintLibraryModal } from './components/BlueprintLibraryModal';
+import type { Blueprint, BlueprintCategory } from './types/blueprints';
+import { instantiateBlueprint, saveCustomBlueprint } from './utils/blueprintEngine';
+import { TranslationManagerModal } from './components/TranslationManagerModal';
+import type { TranslationEntry } from './types/i18n';
+import { applyI18nKeysToChapters } from './utils/i18nManager';
 import type { ChapterGroup } from './types/chapterGroup';
 import { exportModpackToZip } from './utils/zipExporter';
 import { MinecraftTextToolbar } from './components/MinecraftTextToolbar';
@@ -180,6 +186,8 @@ function App() {
   });
   const [isChapterGroupModalOpen, setIsChapterGroupModalOpen] = useState<boolean>(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
+  const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState<boolean>(false);
+  const [isTranslationModalOpen, setIsTranslationModalOpen] = useState<boolean>(false);
 
   // Referencias para manipulación de cursor/selección en barras de formato de texto Minecraft
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -328,6 +336,69 @@ function App() {
     } catch (e) {
       console.error('Error saving reward tables:', e);
     }
+  };
+
+  const handleInsertBlueprint = (bp: Blueprint) => {
+    if (!snbtData) {
+      showToast('Abre o crea un capítulo primero para insertar la plantilla', 'warning');
+      return;
+    }
+
+    // Coordenadas aproximadas centradas en la vista actual del canvas
+    const cam = currentCameraRef.current;
+    const centerPos = {
+      x: Math.round((-cam.pos.x / (cam.scale || 1) / 40) * 2) / 2 || 0,
+      y: Math.round((-cam.pos.y / (cam.scale || 1) / 40) * 2) / 2 || 0
+    };
+
+    const { newQuests } = instantiateBlueprint(bp, centerPos);
+    if (newQuests.length === 0) return;
+
+    const nextQuests = [...quests, ...newQuests];
+    updateState(nextQuests, images);
+
+    const newIds = newQuests.map(q => q.id);
+    setSelection({
+      type: 'quest',
+      ids: newIds,
+      items: newQuests.map(q => ({ type: 'quest', id: q.id }))
+    });
+
+    setIsBlueprintModalOpen(false);
+    showToast(`Plantilla "${bp.title}" insertada (${newQuests.length} misiones)`, 'success');
+  };
+
+  const handleSaveSelectionAsBlueprint = (title: string, category: BlueprintCategory) => {
+    const selectedQuests = quests.filter(q => q && selection.ids.includes(q.id));
+    if (selectedQuests.length === 0) {
+      showToast('Selecciona al menos una misión para guardar como plantilla', 'warning');
+      return;
+    }
+
+    const newBlueprint: Blueprint = {
+      id: `custom_${Date.now()}`,
+      title,
+      description: `Plantilla personalizada con ${selectedQuests.length} misiones`,
+      category,
+      icon: selectedQuests[0]?.icon || 'minecraft:anvil',
+      isCustom: true,
+      quests: JSON.parse(JSON.stringify(selectedQuests))
+    };
+
+    saveCustomBlueprint(newBlueprint);
+    showToast(`Plantilla "${title}" guardada con éxito`, 'success');
+  };
+
+  const handleApplyTranslationsToModpack = (entries: TranslationEntry[]) => {
+    const updatedTabs = applyI18nKeysToChapters(tabs, entries);
+    setTabs(updatedTabs);
+
+    const currentActive = updatedTabs.find(t => t.id === activeTabIdRef.current);
+    if (currentActive) {
+      updateState(currentActive.quests, currentActive.images, false, currentActive.snbtData);
+    }
+
+    showToast('Textos convertidos a claves I18n {clave} y sincronizados en el modpack', 'success');
   };
 
   const handleUpdateChapterGroups = (newGroups: ChapterGroup[]) => {
@@ -2580,7 +2651,7 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '6px' }}>
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
               onClick={() => setIsRewardTableModalOpen(true)}
               title="Gestor visual de Tablas de Recompensas (reward_tables / Loot Crates)"
             >
@@ -2588,7 +2659,7 @@ function App() {
             </button>
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
               onClick={() => setIsChapterGroupModalOpen(true)}
               title="Gestor visual de Grupos de Capítulos (chapter_groups.snbt)"
             >
@@ -2596,11 +2667,29 @@ function App() {
             </button>
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
               onClick={() => setIsAnalyticsModalOpen(true)}
               title="Tablero de Balance y Estadísticas del Modpack (Analytics Dashboard)"
             >
               <span>📊</span> Balance
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              onClick={() => setIsBlueprintModalOpen(true)}
+              title="Biblioteca de Plantillas y Diseños Prehechos (Tiers, Boss Rush, Checklist inicial)"
+            >
+              <span>🧩</span> Plantillas
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 6px', fontSize: '0.72rem', gap: '4px', justifyContent: 'center' }}
+              onClick={() => setIsTranslationModalOpen(true)}
+              title="Gestor de Traducciones e Internacionalización (en_us.json / es_es.json para CurseForge)"
+            >
+              <span>🌐</span> Traducción
             </button>
           </div>
           {snbtData && (
@@ -4762,6 +4851,25 @@ function App() {
           if (viewMode !== 'map') setViewMode('map');
           setIsAnalyticsModalOpen(false);
         }}
+      />
+    )}
+
+    {isBlueprintModalOpen && (
+      <BlueprintLibraryModal
+        isOpen={isBlueprintModalOpen}
+        onClose={() => setIsBlueprintModalOpen(false)}
+        onInsertBlueprint={handleInsertBlueprint}
+        selectedQuestsCount={selection.items.filter(i => i.type === 'quest').length}
+        onSaveSelectionAsBlueprint={handleSaveSelectionAsBlueprint}
+      />
+    )}
+
+    {isTranslationModalOpen && (
+      <TranslationManagerModal
+        isOpen={isTranslationModalOpen}
+        onClose={() => setIsTranslationModalOpen(false)}
+        chapters={tabs}
+        onApplyTranslationsToModpack={handleApplyTranslationsToModpack}
       />
     )}
 
