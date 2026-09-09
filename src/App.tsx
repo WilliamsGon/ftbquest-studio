@@ -1,6 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin, Globe, ExternalLink } from 'lucide-react';
+import { Upload, Download, Image as ImageIcon, Map as MapIcon, Plus, Settings, Trash2, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Table as TableIcon, Share2, Lock, Unlock, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Copy, AlertTriangle, Search, Sparkles, ChevronRight, PanelRightOpen, RotateCcw, Pin, Globe, ExternalLink, Maximize2, Terminal } from 'lucide-react';
+import { MinecraftTextEditorModal } from './components/MinecraftTextEditorModal';
+import { QuestSimulatorModal } from './components/QuestSimulatorModal';
+import { ModpackDoctorModal } from './components/ModpackDoctorModal';
+import { CommandGeneratorModal } from './components/CommandGeneratorModal';
+import { 
+  type SimulatorState, 
+  createInitialSimulatorState, 
+  completeQuestInSimulator, 
+  computeUnlockedQuests
+} from './utils/questSimulatorEngine';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { validateQuestGraph } from './utils/graphValidation';
 import { computeAutoLayout } from './utils/autoLayout';
@@ -194,9 +204,36 @@ function App() {
   const subtitleInputRef = useRef<HTMLInputElement>(null);
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Modo Vista Jugador (Simulación de desbloqueo en tiempo real)
+  // Modo Vista Jugador / Simulador de Progresión
   const [isPlayerMode, setIsPlayerMode] = useState<boolean>(false);
   const [playerCompletedQuestIds, setPlayerCompletedQuestIds] = useState<Set<string>>(new Set());
+  const [isSimulatorModalOpen, setIsSimulatorModalOpen] = useState<boolean>(false);
+  const [simulatorState, setSimulatorState] = useState<SimulatorState>(() => createInitialSimulatorState([]));
+
+  // Estados de Modales Adicionales: Doctor, Comandos y Editor de Texto Enriquecido
+  const [isDoctorModalOpen, setIsDoctorModalOpen] = useState<boolean>(false);
+  const [isCommandModalOpen, setIsCommandModalOpen] = useState<boolean>(false);
+  const [textEditorConfig, setTextEditorConfig] = useState<{
+    isOpen: boolean;
+    fieldTitle: string;
+    initialValue: string | string[];
+    isMultiline: boolean;
+    onSave: (val: any) => void;
+  }>({
+    isOpen: false,
+    fieldTitle: '',
+    initialValue: '',
+    isMultiline: false,
+    onSave: () => {}
+  });
+
+  // Sincronizar misiones desbloqueadas en el simulador cuando cambia el set de misiones
+  useEffect(() => {
+    setSimulatorState(prev => ({
+      ...prev,
+      unlockedQuestIds: computeUnlockedQuests(quests, prev.completedQuestIds)
+    }));
+  }, [quests]);
 
   // Niveles Z (order) únicos presentes en las imágenes de fondo
   const availableZLevels = useMemo(() => {
@@ -411,28 +448,35 @@ function App() {
   };
 
   const handleTogglePlayerQuestCompletion = (questId: string) => {
-    setPlayerCompletedQuestIds(prev => {
-      const next = new Set(prev);
-      if (next.has(questId)) {
-        next.delete(questId);
-        showToast('Misión marcada como pendiente', 'info');
+    setSimulatorState(prev => {
+      const next = completeQuestInSimulator(questId, prev, quests, rewardTables);
+      setPlayerCompletedQuestIds(next.completedQuestIds);
+      if (next.completedQuestIds.has(questId.toUpperCase())) {
+        showToast('¡Misión completada! Desbloqueando ramas y recibiendo recompensas...', 'success');
       } else {
-        next.add(questId);
-        showToast('¡Misión completada! Desbloqueando ramas dependientes...', 'success');
+        showToast('Misión marcada como pendiente (reversión)', 'info');
       }
       return next;
     });
   };
 
   const handleResetPlayerProgress = () => {
-    setPlayerCompletedQuestIds(new Set());
-    showToast('Progreso de simulación reiniciado a cero', 'info');
+    const next = createInitialSimulatorState(quests);
+    setSimulatorState(next);
+    setPlayerCompletedQuestIds(next.completedQuestIds);
+    showToast('Progreso del simulador reiniciado a cero', 'info');
   };
 
   const handleCompleteAllPlayerQuests = () => {
-    const allIds = new Set(quests.map(q => String(q.id)));
-    setPlayerCompletedQuestIds(allIds);
-    showToast('Todas las misiones marcadas como completadas', 'success');
+    let current = simulatorState;
+    for (const q of quests) {
+      if (current.unlockedQuestIds.has(String(q.id).toUpperCase())) {
+        current = completeQuestInSimulator(String(q.id), current, quests, rewardTables);
+      }
+    }
+    setSimulatorState(current);
+    setPlayerCompletedQuestIds(current.completedQuestIds);
+    showToast('Misiones desbloqueadas completadas en lote', 'success');
   };
 
   // Sincronizar niveles Z visibles cuando cambian los disponibles
@@ -4308,12 +4352,44 @@ function App() {
                 </div>
                 <div className="input-group">
                   <label>ID</label>
-                  <input type="text" className="input-field" readOnly value={selection.id as string} />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input type="text" className="input-field" readOnly value={selection.id as string} style={{ flex: 1 }} />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setIsCommandModalOpen(true)}
+                      title="Generar comandos de prueba para esta misión"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Terminal size={14} /> KubeJS
+                    </button>
+                  </div>
                 </div>
                 <div className="input-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                     <label style={{ margin: 0 }}>Título</label>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Minecraft (&6, &a, &l...)</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Minecraft (&6, &a...)</span>
+                      <button
+                        className="btn-icon"
+                        onClick={() => setTextEditorConfig({
+                          isOpen: true,
+                          fieldTitle: 'Editor de Título de Misión',
+                          initialValue: String(getDValue(selectedQuest.title) ?? ''),
+                          isMultiline: false,
+                          onSave: (val) => {
+                            if (typeof selectedQuest.title === 'object' && selectedQuest.title !== null) {
+                              updateQuest(selection.id as string, { title: { ...selectedQuest.title, value: val } });
+                            } else {
+                              updateQuest(selection.id as string, { title: val });
+                            }
+                          }
+                        })}
+                        title="Expandir Editor con Vista Previa en Vivo"
+                        style={{ padding: '2px 6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '3px', color: '#89b4fa' }}
+                      >
+                        <Maximize2 size={12} /> Expandir
+                      </button>
+                    </div>
                   </div>
                   <MinecraftTextToolbar
                     targetRef={titleInputRef}
@@ -4350,7 +4426,22 @@ function App() {
                 <div className="input-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                     <label style={{ margin: 0 }}>Subtítulo</label>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Opcional</span>
+                    <button
+                      className="btn-icon"
+                      onClick={() => setTextEditorConfig({
+                        isOpen: true,
+                        fieldTitle: 'Editor de Subtítulo de Misión',
+                        initialValue: String(selectedQuest.subtitle ?? ''),
+                        isMultiline: false,
+                        onSave: (val) => {
+                          updateQuest(selection.id as string, { subtitle: val ? val : undefined });
+                        }
+                      })}
+                      title="Expandir Editor con Vista Previa en Vivo"
+                      style={{ padding: '2px 6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '3px', color: '#89b4fa' }}
+                    >
+                      <Maximize2 size={12} /> Expandir
+                    </button>
                   </div>
                   <MinecraftTextToolbar
                     targetRef={subtitleInputRef}
@@ -4420,7 +4511,23 @@ function App() {
                 <div className="input-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                     <label style={{ margin: 0 }}>Descripción</label>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Multilínea (Lore)</span>
+                    <button
+                      className="btn-icon"
+                      onClick={() => setTextEditorConfig({
+                        isOpen: true,
+                        fieldTitle: 'Editor de Lore / Descripción de Misión',
+                        initialValue: selectedQuest.description || [],
+                        isMultiline: true,
+                        onSave: (val) => {
+                          const descArray = Array.isArray(val) ? val : String(val).split("\n");
+                          updateQuest(selection.id as string, { description: descArray });
+                        }
+                      })}
+                      title="Expandir Editor con Vista Previa en Vivo"
+                      style={{ padding: '2px 6px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '3px', color: '#89b4fa' }}
+                    >
+                      <Maximize2 size={12} /> Expandir
+                    </button>
                   </div>
                   <MinecraftTextToolbar
                     targetRef={descriptionTextareaRef}
@@ -4933,6 +5040,54 @@ function App() {
         onSelect={texturePicker.onSelect}
       />
     )}
+
+    {/* Modal de Edición Enriquecida de Texto con Preview */}
+    <MinecraftTextEditorModal
+      isOpen={textEditorConfig.isOpen}
+      fieldTitle={textEditorConfig.fieldTitle}
+      initialValue={textEditorConfig.initialValue}
+      isMultiline={textEditorConfig.isMultiline}
+      onSave={textEditorConfig.onSave}
+      onClose={() => setTextEditorConfig(prev => ({ ...prev, isOpen: false }))}
+    />
+
+    {/* Modal del Simulador de Progresión */}
+    <QuestSimulatorModal
+      isOpen={isSimulatorModalOpen}
+      onClose={() => setIsSimulatorModalOpen(false)}
+      simulatorState={simulatorState}
+      allQuests={quests}
+      rewardTables={rewardTables}
+      onReset={handleResetPlayerProgress}
+      onCompleteAllAvailable={handleCompleteAllPlayerQuests}
+      onSelectQuest={(questId) => {
+        setSelection({ type: 'quest', id: questId, ids: [questId] });
+      }}
+    />
+
+    {/* Modal del Doctor del Modpack */}
+    <ModpackDoctorModal
+      isOpen={isDoctorModalOpen}
+      onClose={() => setIsDoctorModalOpen(false)}
+      quests={quests}
+      rewardTables={rewardTables}
+      activeChapterTitle={String(snbtData?.title ? getDValue(snbtData.title) : filename.replace(/\.snbt$/, ''))}
+      onUpdateQuests={(newQuests) => {
+        updateQuestsAndImages(newQuests, images);
+      }}
+      onSelectQuest={(questId) => {
+        setSelection({ type: 'quest', id: questId, ids: [questId] });
+      }}
+    />
+
+    {/* Modal Generador de Comandos y KubeJS Tester */}
+    <CommandGeneratorModal
+      isOpen={isCommandModalOpen}
+      onClose={() => setIsCommandModalOpen(false)}
+      selectedQuest={selection.type === 'quest' && selection.id ? quests.find(q => q.id === selection.id) : null}
+      chapterTitle={String(snbtData?.title ? getDValue(snbtData.title) : filename.replace(/\.snbt$/, ''))}
+      quests={quests}
+    />
 
     {contextMenu.visible && (
       <div 
