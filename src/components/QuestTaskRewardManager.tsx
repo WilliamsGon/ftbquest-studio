@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { 
   Plus, Trash2, Copy, ChevronUp, ChevronDown, Settings, Search,
-  Package, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
+  Package, Tag, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
   Gift, Terminal, Dices, Layers, Trees, ShieldAlert
 } from 'lucide-react';
 import type { RewardTable } from '../types/rewardTable';
+import { ItemTagPickerModal } from './ItemTagPickerModal';
+import { isItemTag } from '../utils/itemTagCatalogs';
 import { 
   MINECRAFT_ENTITIES, 
   MINECRAFT_BIOMES, 
@@ -143,6 +145,11 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
 }) => {
   const [isTaskMenuOpen, setIsTaskMenuOpen] = useState(false);
   const [isRewardMenuOpen, setIsRewardMenuOpen] = useState(false);
+  const [tagPickerState, setTagPickerState] = useState<{ isOpen: boolean; taskIndex: number; currentTag: string }>({
+    isOpen: false,
+    taskIndex: -1,
+    currentTag: ''
+  });
 
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const safeRewards = Array.isArray(rewards) ? rewards : [];
@@ -636,86 +643,197 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                   </div>
 
                   {/* Cuerpo Específico según Tipo */}
-                  {task.type === 'item' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ItemThumbnail icon={task.item} altText="Task item" />
-                        <div style={{ flex: 1, display: 'flex', gap: '4px' }}>
-                          <input 
-                            type="text" 
-                            className="input-field" 
-                            style={{ fontSize: '0.8rem', padding: '5px 8px' }}
-                            value={typeof task.item === 'string' ? task.item : (task.item?.id || '')} 
-                            placeholder="Item (ej. minecraft:iron_ingot)"
-                            onChange={(e) => {
-                              if (typeof task.item === 'object' && task.item !== null) {
-                                updateTaskField(tIdx, 'item', { ...task.item, id: e.target.value });
-                              } else {
-                                updateTaskField(tIdx, 'item', e.target.value);
+                  {task.type === 'item' && (() => {
+                    const currentRawItem = typeof task.item === 'string' ? task.item : (task.item?.id || '');
+                    const isCurrentTag = isItemTag(currentRawItem);
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {/* Selector de modo: Ítem Específico vs Tag Forge/Common */}
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              border: 'none',
+                              backgroundColor: !isCurrentTag ? '#3b82f6' : 'rgba(255, 255, 255, 0.06)',
+                              color: !isCurrentTag ? '#ffffff' : '#9ca3af',
+                              fontWeight: !isCurrentTag ? 600 : 400
+                            }}
+                            onClick={() => {
+                              if (isCurrentTag) {
+                                const clean = currentRawItem.replace(/^#/, '');
+                                updateTaskField(tIdx, 'item', clean.includes(':') ? clean : 'minecraft:iron_ingot');
                               }
                             }}
-                          />
-                          <button 
-                            className="btn-icon" 
-                            title="Explorar ítems en catálogo de texturas"
-                            onClick={() => onOpenTexturePicker('icon', (selectedPath) => {
-                              if (typeof task.item === 'object' && task.item !== null) {
-                                updateTaskField(tIdx, 'item', { ...task.item, id: selectedPath });
-                              } else {
-                                updateTaskField(tIdx, 'item', selectedPath);
-                              }
-                            })}
-                            style={{ color: 'var(--accent-color)', background: 'rgba(255,255,255,0.06)' }}
                           >
-                            <Search size={14} />
+                            <Package size={12} /> Ítem Específico
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              border: 'none',
+                              backgroundColor: isCurrentTag ? '#10b981' : 'rgba(255, 255, 255, 0.06)',
+                              color: isCurrentTag ? '#ffffff' : '#9ca3af',
+                              fontWeight: isCurrentTag ? 600 : 400
+                            }}
+                            onClick={() => {
+                              if (!isCurrentTag) {
+                                const newTag = currentRawItem ? `#forge:${currentRawItem.split(':').pop() || 'ingots/iron'}` : '#forge:ingots/iron';
+                                updateTaskField(tIdx, 'item', newTag);
+                              }
+                            }}
+                          >
+                            <Tag size={12} /> 🏷️ Etiqueta Forge/Common
                           </button>
                         </div>
-                        <div style={{ width: '70px' }}>
-                          <input 
-                            type="number" 
-                            className="input-field" 
-                            style={{ fontSize: '0.8rem', padding: '5px 8px', textAlign: 'center' }}
-                            value={task.count?.value || task.count || 1} 
-                            min={1}
-                            placeholder="Cant."
-                            title="Cantidad requerida (count: XL)"
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 1;
-                              updateTaskField(tIdx, 'count', { __type: 'number', value: val, suffix: 'L' });
-                            }}
-                          />
+
+                        {/* Input y Selector según el modo */}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {isCurrentTag ? (
+                            <div 
+                              style={{
+                                width: '34px',
+                                height: '34px',
+                                borderRadius: '6px',
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#10b981',
+                                flexShrink: 0
+                              }}
+                              title="Tarea configurada por Etiqueta (Item Tag)"
+                            >
+                              <Tag size={16} />
+                            </div>
+                          ) : (
+                            <ItemThumbnail icon={task.item} altText="Task item" />
+                          )}
+
+                          <div style={{ flex: 1, display: 'flex', gap: '4px' }}>
+                            <input 
+                              type="text" 
+                              className="input-field" 
+                              style={{ 
+                                fontSize: '0.8rem', 
+                                padding: '5px 8px',
+                                borderColor: isCurrentTag ? 'rgba(16, 185, 129, 0.4)' : undefined,
+                                color: isCurrentTag ? '#6ee7b7' : undefined,
+                                fontFamily: isCurrentTag ? 'monospace' : 'inherit'
+                              }}
+                              value={currentRawItem} 
+                              placeholder={isCurrentTag ? "Tag (ej. #forge:ingots/iron)" : "Item (ej. minecraft:iron_ingot)"}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (typeof task.item === 'object' && task.item !== null) {
+                                  updateTaskField(tIdx, 'item', { ...task.item, id: val });
+                                } else {
+                                  updateTaskField(tIdx, 'item', val);
+                                }
+                              }}
+                            />
+                            {isCurrentTag ? (
+                              <button 
+                                type="button"
+                                className="btn-icon" 
+                                title="Abrir catálogo de etiquetas Forge 1.20.1"
+                                onClick={() => setTagPickerState({
+                                  isOpen: true,
+                                  taskIndex: tIdx,
+                                  currentTag: currentRawItem
+                                })}
+                                style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.12)' }}
+                              >
+                                <Tag size={14} />
+                              </button>
+                            ) : (
+                              <button 
+                                type="button"
+                                className="btn-icon" 
+                                title="Explorar ítems en catálogo de texturas"
+                                onClick={() => onOpenTexturePicker('icon', (selectedPath) => {
+                                  if (typeof task.item === 'object' && task.item !== null) {
+                                    updateTaskField(tIdx, 'item', { ...task.item, id: selectedPath });
+                                  } else {
+                                    updateTaskField(tIdx, 'item', selectedPath);
+                                  }
+                                })}
+                                style={{ color: 'var(--accent-color)', background: 'rgba(255,255,255,0.06)' }}
+                              >
+                                <Search size={14} />
+                              </button>
+                            )}
+                          </div>
+
+                          <div style={{ width: '70px' }}>
+                            <input 
+                              type="number" 
+                              className="input-field" 
+                              style={{ fontSize: '0.8rem', padding: '5px 8px', textAlign: 'center' }}
+                              value={task.count?.value || task.count || 1} 
+                              min={1}
+                              placeholder="Cant."
+                              title="Cantidad requerida (count: XL)"
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                updateTaskField(tIdx, 'count', { __type: 'number', value: val, suffix: 'L' });
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Mensaje informativo de Tag */}
+                        {isCurrentTag && (
+                          <div style={{ fontSize: '0.72rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: '#10b981' }}>✓</span> Aceptará cualquier ítem del modpack registrado bajo este tag.
+                          </div>
+                        )}
+
+                        {/* Flags avanzadas de ítems */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={!!task.consume_items}
+                              onChange={(e) => updateTaskField(tIdx, 'consume_items', e.target.checked ? true : undefined)}
+                            />
+                            <span>Consumir al entregar</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={!!task.only_from_crafting}
+                              onChange={(e) => updateTaskField(tIdx, 'only_from_crafting', e.target.checked ? true : undefined)}
+                            />
+                            <span>Solo por crafteo</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={!!task.match_nbt}
+                              onChange={(e) => updateTaskField(tIdx, 'match_nbt', e.target.checked ? true : undefined)}
+                            />
+                            <span>Coincidir NBT</span>
+                          </label>
                         </div>
                       </div>
-
-                      {/* Flags avanzadas de ítems */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
-                          <input 
-                            type="checkbox" 
-                            checked={!!task.consume_items}
-                            onChange={(e) => updateTaskField(tIdx, 'consume_items', e.target.checked ? true : undefined)}
-                          />
-                          <span>Consumir al entregar</span>
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
-                          <input 
-                            type="checkbox" 
-                            checked={!!task.only_from_crafting}
-                            onChange={(e) => updateTaskField(tIdx, 'only_from_crafting', e.target.checked ? true : undefined)}
-                          />
-                          <span>Solo por crafteo</span>
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
-                          <input 
-                            type="checkbox" 
-                            checked={!!task.match_nbt}
-                            onChange={(e) => updateTaskField(tIdx, 'match_nbt', e.target.checked ? true : undefined)}
-                          />
-                          <span>Coincidir NBT</span>
-                        </label>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {task.type === 'checkmark' && (
                     <div>
@@ -1429,6 +1547,18 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
           </div>
         )}
       </div>
+
+      {tagPickerState.isOpen && (
+        <ItemTagPickerModal
+          isOpen={tagPickerState.isOpen}
+          currentTag={tagPickerState.currentTag}
+          onSelectTag={(selectedTag) => {
+            updateTaskField(tagPickerState.taskIndex, 'item', selectedTag);
+            setTagPickerState({ isOpen: false, taskIndex: -1, currentTag: '' });
+          }}
+          onClose={() => setTagPickerState({ isOpen: false, taskIndex: -1, currentTag: '' })}
+        />
+      )}
 
       {/* Datalists para autocompletado nativo */}
       <datalist id="minecraft-entities-datalist">
