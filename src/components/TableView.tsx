@@ -1,5 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Trash2, Tag, Gift, Clipboard } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Search, Trash2, Tag, Gift, Clipboard, Download, 
+  Sparkles, ArrowUpDown, ArrowUp, ArrowDown, 
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  CheckSquare, X
+} from 'lucide-react';
+import { TableBatchModal, type QuestBatchConfig, type TaskBatchConfig, type RewardBatchConfig } from './TableBatchModal';
 
 interface TableViewProps {
   quests: any[];
@@ -11,6 +17,7 @@ interface TableViewProps {
 
 const defaultColumnWidths: { [key: string]: number } = {
   // Quests
+  'quests-select': 44,
   'quests-id': 180,
   'quests-title': 220,
   'quests-icon': 200,
@@ -19,18 +26,20 @@ const defaultColumnWidths: { [key: string]: number } = {
   'quests-size': 90,
   'quests-shape': 120,
   'quests-hide_deps': 130,
-  'quests-actions': 90,
+  'quests-actions': 80,
 
   // Tasks
+  'tasks-select': 44,
   'tasks-parent': 180,
   'tasks-id': 170,
   'tasks-type': 120,
   'tasks-item': 260,
   'tasks-count': 110,
   'tasks-consume': 140,
-  'tasks-actions': 90,
+  'tasks-actions': 80,
 
   // Rewards
+  'rewards-select': 44,
   'rewards-parent': 180,
   'rewards-id': 170,
   'rewards-type': 130,
@@ -46,13 +55,34 @@ const defaultColumnWidths: { [key: string]: number } = {
   'rewards-only_one': 140,
   'rewards-title': 160,
   'rewards-icon': 160,
-  'rewards-actions': 90
+  'rewards-actions': 80
 };
 
 export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpenNbtEditor }) => {
   const [subTab, setSubTab] = useState<'quests' | 'tasks' | 'rewards'>('quests');
   const [filterQuery, setFilterQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Modal Masivo
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+
+  // Selección Múltiple
+  const [selectedQuestIds, setSelectedQuestIds] = useState<Set<string>>(new Set());
+  const [selectedTaskKeys, setSelectedTaskKeys] = useState<Set<string>>(new Set());
+  const [selectedRewardKeys, setSelectedRewardKeys] = useState<Set<string>>(new Set());
+
+  // Ordenamiento
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Paginación
+  const [pageSize, setPageSize] = useState<number | 'all'>(50);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Resetear página al cambiar pestaña, filtro o tamaño de página
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [subTab, filterQuery, pageSize]);
 
   // Ancho de columnas redimensionables
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>(() => {
@@ -79,7 +109,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const newWidth = Math.max(50, currentWidth + deltaX);
+      const newWidth = Math.max(40, currentWidth + deltaX);
       setColumnWidths(prev => {
         const next = { ...prev, [colKey]: newWidth };
         try {
@@ -110,18 +140,58 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     });
   };
 
-  const renderHeader = (colKey: string, children: React.ReactNode, style?: React.CSSProperties) => {
+  // Helper para alternar sort
+  const handleSort = (fieldKey: string) => {
+    if (sortCol === fieldKey) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else {
+        setSortCol(null);
+        setSortDir('asc');
+      }
+    } else {
+      setSortCol(fieldKey);
+      setSortDir('asc');
+    }
+  };
+
+  const renderHeader = (
+    colKey: string, 
+    children: React.ReactNode, 
+    sortField?: string,
+    style?: React.CSSProperties
+  ) => {
     const w = getColWidth(colKey);
+    const isSorted = sortField && sortCol === sortField;
     return (
       <th 
         style={{ 
           width: w ? `${w}px` : undefined, 
           minWidth: w ? `${w}px` : undefined,
           position: 'relative',
+          cursor: sortField ? 'pointer' : 'default',
+          userSelect: 'none',
           ...style 
         }}
+        onClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest('.column-resize-handle') || target.tagName === 'SELECT' || target.tagName === 'INPUT') {
+            return;
+          }
+          if (sortField) handleSort(sortField);
+        }}
       >
-        {children}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span>{children}</span>
+          {sortField && (
+            <span style={{ display: 'inline-flex', opacity: isSorted ? 1 : 0.25 }}>
+              {isSorted ? (
+                sortDir === 'asc' ? <ArrowUp size={13} color="var(--accent-color)" /> : <ArrowDown size={13} color="var(--accent-color)" />
+              ) : (
+                <ArrowUpDown size={13} />
+              )}
+            </span>
+          )}
+        </div>
         <div 
           className={`column-resize-handle ${resizingCol === colKey ? 'active' : ''}`}
           onMouseDown={(e) => handleResizeStart(e, colKey)}
@@ -132,13 +202,10 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     );
   };
 
-
-  // Helper para obtener el valor plano de SNBT
   const getDValue = (val: any) => {
     return typeof val === 'object' && val !== null ? val.value : val;
   };
 
-  // Copia rápida al portapapeles
   const handleCopyId = (id: string) => {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
@@ -222,7 +289,220 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     );
   }, [rewardsList, subTab, filterQuery]);
 
-  // --- 4. EDICIÓN DE TAREAS Y RECOMPENSAS ---
+  // --- 4. ORDENAMIENTO ---
+  const sortedQuests = useMemo(() => {
+    if (!sortCol) return filteredQuests;
+    return [...filteredQuests].sort((a, b) => {
+      let aVal: any = a[sortCol];
+      let bVal: any = b[sortCol];
+      if (sortCol === 'x' || sortCol === 'y' || sortCol === 'size') {
+        aVal = getDValue(aVal) ?? 0;
+        bVal = getDValue(bVal) ?? 0;
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      aVal = (aVal || '').toString().toLowerCase();
+      bVal = (bVal || '').toString().toLowerCase();
+      return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+  }, [filteredQuests, sortCol, sortDir]);
+
+  const sortedTasks = useMemo(() => {
+    if (!sortCol) return filteredTasks;
+    return [...filteredTasks].sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+      if (sortCol === 'questTitle') {
+        aVal = a.questTitle;
+        bVal = b.questTitle;
+      } else if (sortCol === 'id') {
+        aVal = a.taskObj.id || '';
+        bVal = b.taskObj.id || '';
+      } else if (sortCol === 'type') {
+        aVal = a.taskObj.type || '';
+        bVal = b.taskObj.type || '';
+      } else if (sortCol === 'item') {
+        aVal = a.taskObj.type === 'kill' 
+          ? (getDValue(a.taskObj.entity) || getDValue(a.taskObj.monster) || '') 
+          : (typeof a.taskObj.item === 'string' ? a.taskObj.item : a.taskObj.item?.id || '');
+        bVal = b.taskObj.type === 'kill' 
+          ? (getDValue(b.taskObj.entity) || getDValue(b.taskObj.monster) || '') 
+          : (typeof b.taskObj.item === 'string' ? b.taskObj.item : b.taskObj.item?.id || '');
+      } else if (sortCol === 'count') {
+        const aCount = a.taskObj.type === 'kill'
+          ? (getDValue(a.taskObj.value) ?? 1)
+          : (a.taskObj.count !== undefined ? getDValue(a.taskObj.count) : (a.taskObj.item?.Count || 1));
+        const bCount = b.taskObj.type === 'kill'
+          ? (getDValue(b.taskObj.value) ?? 1)
+          : (b.taskObj.count !== undefined ? getDValue(b.taskObj.count) : (b.taskObj.item?.Count || 1));
+        return sortDir === 'asc' ? aCount - bCount : bCount - aCount;
+      } else if (sortCol === 'consume') {
+        aVal = a.taskObj.consume_items ? 1 : 0;
+        bVal = b.taskObj.consume_items ? 1 : 0;
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc' ? (aVal || '').toString().localeCompare((bVal || '').toString()) : (bVal || '').toString().localeCompare((aVal || '').toString());
+    });
+  }, [filteredTasks, sortCol, sortDir]);
+
+  const sortedRewards = useMemo(() => {
+    if (!sortCol) return filteredRewards;
+    return [...filteredRewards].sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+      if (sortCol === 'questTitle') {
+        aVal = a.questTitle;
+        bVal = b.questTitle;
+      } else if (sortCol === 'id') {
+        aVal = a.rewardObj.id || '';
+        bVal = b.rewardObj.id || '';
+      } else if (sortCol === 'type') {
+        aVal = a.rewardObj.type || '';
+        bVal = b.rewardObj.type || '';
+      } else if (sortCol === 'item') {
+        aVal = a.rewardObj.type === 'command' 
+          ? (getDValue(a.rewardObj.command) || '') 
+          : (typeof a.rewardObj.item === 'string' ? a.rewardObj.item : a.rewardObj.item?.id || '');
+        bVal = b.rewardObj.type === 'command' 
+          ? (getDValue(b.rewardObj.command) || '') 
+          : (typeof b.rewardObj.item === 'string' ? b.rewardObj.item : b.rewardObj.item?.id || '');
+      } else if (sortCol === 'count') {
+        const aCount = a.rewardObj.count !== undefined ? getDValue(a.rewardObj.count) : (a.rewardObj.item?.Count || 1);
+        const bCount = b.rewardObj.count !== undefined ? getDValue(b.rewardObj.count) : (b.rewardObj.item?.Count || 1);
+        return sortDir === 'asc' ? aCount - bCount : bCount - aCount;
+      } else if (sortCol === 'team') {
+        aVal = a.rewardObj.team_reward ? 1 : 0;
+        bVal = b.rewardObj.team_reward ? 1 : 0;
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc' ? (aVal || '').toString().localeCompare((bVal || '').toString()) : (bVal || '').toString().localeCompare((aVal || '').toString());
+    });
+  }, [filteredRewards, sortCol, sortDir]);
+
+  // --- 5. PAGINACIÓN ---
+  const currentTotal = subTab === 'quests' 
+    ? filteredQuests.length 
+    : subTab === 'tasks' 
+      ? filteredTasks.length 
+      : filteredRewards.length;
+
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(currentTotal / pageSize));
+
+  const paginatedQuests = useMemo(() => {
+    if (pageSize === 'all') return sortedQuests;
+    const start = (currentPage - 1) * pageSize;
+    return sortedQuests.slice(start, start + pageSize);
+  }, [sortedQuests, currentPage, pageSize]);
+
+  const paginatedTasks = useMemo(() => {
+    if (pageSize === 'all') return sortedTasks;
+    const start = (currentPage - 1) * pageSize;
+    return sortedTasks.slice(start, start + pageSize);
+  }, [sortedTasks, currentPage, pageSize]);
+
+  const paginatedRewards = useMemo(() => {
+    if (pageSize === 'all') return sortedRewards;
+    const start = (currentPage - 1) * pageSize;
+    return sortedRewards.slice(start, start + pageSize);
+  }, [sortedRewards, currentPage, pageSize]);
+
+  // --- 6. SELECCIÓN ---
+  const toggleQuestSelect = (id: string) => {
+    setSelectedQuestIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleTaskSelect = (key: string) => {
+    setSelectedTaskKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleRewardSelect = (key: string) => {
+    setSelectedRewardKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const isAllQuestsVisibleSelected = paginatedQuests.length > 0 && paginatedQuests.every(q => selectedQuestIds.has(q.id));
+  const isSomeQuestsVisibleSelected = paginatedQuests.some(q => selectedQuestIds.has(q.id)) && !isAllQuestsVisibleSelected;
+
+  const toggleAllQuestsVisible = () => {
+    if (isAllQuestsVisibleSelected) {
+      setSelectedQuestIds(prev => {
+        const next = new Set(prev);
+        paginatedQuests.forEach(q => next.delete(q.id));
+        return next;
+      });
+    } else {
+      setSelectedQuestIds(prev => {
+        const next = new Set(prev);
+        paginatedQuests.forEach(q => next.add(q.id));
+        return next;
+      });
+    }
+  };
+
+  const isAllTasksVisibleSelected = paginatedTasks.length > 0 && paginatedTasks.every(t => selectedTaskKeys.has(`${t.questId}:${t.taskIndex}`));
+  const isSomeTasksVisibleSelected = paginatedTasks.some(t => selectedTaskKeys.has(`${t.questId}:${t.taskIndex}`)) && !isAllTasksVisibleSelected;
+
+  const toggleAllTasksVisible = () => {
+    if (isAllTasksVisibleSelected) {
+      setSelectedTaskKeys(prev => {
+        const next = new Set(prev);
+        paginatedTasks.forEach(t => next.delete(`${t.questId}:${t.taskIndex}`));
+        return next;
+      });
+    } else {
+      setSelectedTaskKeys(prev => {
+        const next = new Set(prev);
+        paginatedTasks.forEach(t => next.add(`${t.questId}:${t.taskIndex}`));
+        return next;
+      });
+    }
+  };
+
+  const isAllRewardsVisibleSelected = paginatedRewards.length > 0 && paginatedRewards.every(r => selectedRewardKeys.has(`${r.questId}:${r.rewardIndex}`));
+  const isSomeRewardsVisibleSelected = paginatedRewards.some(r => selectedRewardKeys.has(`${r.questId}:${r.rewardIndex}`)) && !isAllRewardsVisibleSelected;
+
+  const toggleAllRewardsVisible = () => {
+    if (isAllRewardsVisibleSelected) {
+      setSelectedRewardKeys(prev => {
+        const next = new Set(prev);
+        paginatedRewards.forEach(r => next.delete(`${r.questId}:${r.rewardIndex}`));
+        return next;
+      });
+    } else {
+      setSelectedRewardKeys(prev => {
+        const next = new Set(prev);
+        paginatedRewards.forEach(r => next.add(`${r.questId}:${r.rewardIndex}`));
+        return next;
+      });
+    }
+  };
+
+  const currentSelectedCount = subTab === 'quests' 
+    ? selectedQuestIds.size 
+    : subTab === 'tasks' 
+      ? selectedTaskKeys.size 
+      : selectedRewardKeys.size;
+
+  const handleClearSelection = () => {
+    if (subTab === 'quests') setSelectedQuestIds(new Set());
+    else if (subTab === 'tasks') setSelectedTaskKeys(new Set());
+    else setSelectedRewardKeys(new Set());
+  };
+
+  // --- 7. EDICIÓN DE TAREAS Y RECOMPENSAS ---
   const handleUpdateTask = (questId: string, taskIndex: number, updates: any) => {
     const quest = quests.find(q => q.id === questId);
     if (!quest) return;
@@ -245,11 +525,16 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     updateQuest(questId, { rewards: rewardsArray });
   };
 
-  // --- 5. ACCIONES DE BORRADO ---
+  // --- 8. ACCIONES DE BORRADO INDIVIDUAL ---
   const handleDeleteQuest = (id: string) => {
     if (window.confirm('¿Seguro que deseas eliminar esta misión?')) {
       const nextQuests = quests.filter(q => q.id !== id);
-      updateQuest(nextQuests, undefined); // Si pasamos array actualiza el total
+      updateQuest(nextQuests, undefined);
+      setSelectedQuestIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -260,6 +545,11 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
       const tasksArray = Array.isArray(quest.tasks) ? [...quest.tasks] : (quest.tasks ? [quest.tasks] : []);
       tasksArray.splice(taskIndex, 1);
       updateQuest(questId, { tasks: tasksArray });
+      setSelectedTaskKeys(prev => {
+        const next = new Set(prev);
+        next.delete(`${questId}:${taskIndex}`);
+        return next;
+      });
     }
   };
 
@@ -270,6 +560,11 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
       const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
       rewardsArray.splice(rewardIndex, 1);
       updateQuest(questId, { rewards: rewardsArray });
+      setSelectedRewardKeys(prev => {
+        const next = new Set(prev);
+        next.delete(`${questId}:${rewardIndex}`);
+        return next;
+      });
     }
   };
 
@@ -322,7 +617,6 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     }
   };
 
-  // --- 6. LÓGICA DE MARCAR TODOS (BULK CHECKBOX TOGGLE) ---
   const handleQuestsBulkToggle = (val: string) => {
     const nextVal = val === 'default' ? undefined : (val === 'true');
     const updatesList = filteredQuests.map(q => ({
@@ -368,9 +662,362 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
     }
   };
 
+  // --- 9. ACCIONES MASIVAS VIA MODAL (BATCH MODAL) ---
+  const handleApplyQuestBatch = (config: QuestBatchConfig, scope: 'selected' | 'all_filtered') => {
+    const targetQuests = scope === 'selected'
+      ? quests.filter(q => selectedQuestIds.has(q.id))
+      : filteredQuests;
+
+    if (targetQuests.length === 0) return;
+
+    const updatesList = targetQuests.map(q => {
+      const updates: any = {};
+      if (config.shape !== undefined) {
+        updates.shape = config.shape === '' ? undefined : config.shape;
+      }
+      if (config.size !== undefined) {
+        updates.size = { __type: 'number', value: config.size, suffix: 'd' };
+      }
+      if (config.hide_dependency_lines !== undefined) {
+        updates.hide_dependency_lines = config.hide_dependency_lines;
+      }
+      if (config.optional !== undefined) {
+        updates.optional = config.optional;
+      }
+      if (config.invisible !== undefined) {
+        updates.invisible = config.invisible;
+      }
+      if (config.hide_until_deps_complete !== undefined) {
+        updates.hide_until_deps_complete = config.hide_until_deps_complete;
+      }
+      if (config.can_repeat !== undefined) {
+        updates.can_repeat = config.can_repeat;
+      }
+      if (config.disable_toast !== undefined) {
+        updates.disable_toast = config.disable_toast;
+      }
+      if (config.dependency_requirement !== undefined) {
+        updates.dependency_requirement = config.dependency_requirement;
+      }
+      if (config.addTag && config.addTag.trim()) {
+        const currentTags = Array.isArray(q.tags) ? [...q.tags] : (q.tags ? [q.tags] : []);
+        const tagToAdd = config.addTag.trim();
+        if (!currentTags.includes(tagToAdd)) {
+          updates.tags = [...currentTags, tagToAdd];
+        }
+      }
+      return { id: q.id, updates };
+    });
+
+    updateQuest(updatesList);
+    setIsBatchModalOpen(false);
+  };
+
+  const handleApplyTaskBatch = (config: TaskBatchConfig, scope: 'selected' | 'all_filtered') => {
+    const targetTasks = scope === 'selected'
+      ? tasksList.filter(t => selectedTaskKeys.has(`${t.questId}:${t.taskIndex}`))
+      : filteredTasks;
+
+    if (targetTasks.length === 0) return;
+
+    const tasksByQuest: { [questId: string]: { taskIndex: number; taskObj: any }[] } = {};
+    targetTasks.forEach(t => {
+      if (!tasksByQuest[t.questId]) tasksByQuest[t.questId] = [];
+      tasksByQuest[t.questId].push(t);
+    });
+
+    const updatesList = Object.keys(tasksByQuest).map(qId => {
+      const quest = quests.find(q => q.id === qId);
+      if (!quest) return null;
+      const tasksArray = Array.isArray(quest.tasks) ? [...quest.tasks] : (quest.tasks ? [quest.tasks] : []);
+
+      tasksByQuest[qId].forEach(t => {
+        const idx = t.taskIndex;
+        const task = { ...tasksArray[idx] };
+
+        if (config.consume_items !== undefined) {
+          task.consume_items = config.consume_items;
+        }
+        if (config.ignore_damage !== undefined) {
+          task.ignore_damage = config.ignore_damage;
+        }
+        if (config.match_nbt !== undefined) {
+          task.match_nbt = config.match_nbt;
+        }
+        if (config.countMode && config.countValue !== undefined) {
+          const isKill = task.type === 'kill';
+          const currentCount = isKill 
+            ? (getDValue(task.value) ?? 1)
+            : (task.count !== undefined 
+                ? getDValue(task.count) 
+                : (typeof task.item === 'object' && task.item !== null ? (getDValue(task.item.Count) ?? getDValue(task.item.count) ?? 1) : 1));
+
+          let nextCount = currentCount;
+          if (config.countMode === 'set') nextCount = Math.max(1, Math.round(config.countValue));
+          else if (config.countMode === 'multiply') nextCount = Math.max(1, Math.round(currentCount * config.countValue));
+          else if (config.countMode === 'add') nextCount = Math.max(1, Math.round(currentCount + config.countValue));
+
+          if (isKill) {
+            if (typeof task.value === 'object' && task.value !== null) task.value = { ...task.value, value: nextCount };
+            else task.value = nextCount;
+          } else if (typeof task.item === 'object' && task.item !== null && (task.item.Count !== undefined || task.item.count !== undefined)) {
+            const isCapital = task.item.Count !== undefined;
+            const k = isCapital ? 'Count' : 'count';
+            const currObj = task.item[k];
+            task.item = {
+              ...task.item,
+              [k]: typeof currObj === 'object' && currObj !== null ? { ...currObj, value: nextCount } : nextCount
+            };
+          } else {
+            if (typeof task.count === 'object' && task.count !== null) task.count = { ...task.count, value: nextCount };
+            else task.count = nextCount;
+          }
+        }
+
+        tasksArray[idx] = task;
+      });
+
+      return { id: qId, updates: { tasks: tasksArray } };
+    }).filter(Boolean) as { id: string; updates: any }[];
+
+    if (updatesList.length > 0) updateQuest(updatesList);
+    setIsBatchModalOpen(false);
+  };
+
+  const handleApplyRewardBatch = (config: RewardBatchConfig, scope: 'selected' | 'all_filtered') => {
+    const targetRewards = scope === 'selected'
+      ? rewardsList.filter(r => selectedRewardKeys.has(`${r.questId}:${r.rewardIndex}`))
+      : filteredRewards;
+
+    if (targetRewards.length === 0) return;
+
+    const rewardsByQuest: { [questId: string]: { rewardIndex: number; rewardObj: any }[] } = {};
+    targetRewards.forEach(r => {
+      if (!rewardsByQuest[r.questId]) rewardsByQuest[r.questId] = [];
+      rewardsByQuest[r.questId].push(r);
+    });
+
+    const updatesList = Object.keys(rewardsByQuest).map(qId => {
+      const quest = quests.find(q => q.id === qId);
+      if (!quest) return null;
+      const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+
+      rewardsByQuest[qId].forEach(r => {
+        const idx = r.rewardIndex;
+        const reward = { ...rewardsArray[idx] };
+
+        if (config.team_reward !== undefined) reward.team_reward = config.team_reward;
+        if (config.auto !== undefined) {
+          if (config.auto === 'default') delete reward.auto;
+          else reward.auto = config.auto;
+        }
+        if (config.exclude_from_claim_all !== undefined) reward.exclude_from_claim_all = config.exclude_from_claim_all;
+        if (config.only_one !== undefined) reward.only_one = config.only_one;
+
+        if (config.countMode && config.countValue !== undefined) {
+          if (reward.type === 'xp') {
+            const currentVal = getDValue(reward.xp) ?? 0;
+            let nextVal = currentVal;
+            if (config.countMode === 'set') nextVal = Math.max(0, Math.round(config.countValue));
+            else if (config.countMode === 'multiply') nextVal = Math.max(0, Math.round(currentVal * config.countValue));
+            else if (config.countMode === 'add') nextVal = Math.max(0, Math.round(currentVal + config.countValue));
+            if (typeof reward.xp === 'object' && reward.xp !== null) reward.xp = { ...reward.xp, value: nextVal };
+            else reward.xp = nextVal;
+          } else if (reward.type === 'xp_levels') {
+            const currentVal = getDValue(reward.xp_levels) ?? 0;
+            let nextVal = currentVal;
+            if (config.countMode === 'set') nextVal = Math.max(0, Math.round(config.countValue));
+            else if (config.countMode === 'multiply') nextVal = Math.max(0, Math.round(currentVal * config.countValue));
+            else if (config.countMode === 'add') nextVal = Math.max(0, Math.round(currentVal + config.countValue));
+            if (typeof reward.xp_levels === 'object' && reward.xp_levels !== null) reward.xp_levels = { ...reward.xp_levels, value: nextVal };
+            else reward.xp_levels = nextVal;
+          } else if (reward.type === 'item') {
+            const currentVal = reward.count !== undefined 
+              ? getDValue(reward.count) 
+              : (typeof reward.item === 'object' && reward.item !== null ? (getDValue(reward.item.Count) ?? getDValue(reward.item.count) ?? 1) : 1);
+            let nextVal = currentVal;
+            if (config.countMode === 'set') nextVal = Math.max(1, Math.round(config.countValue));
+            else if (config.countMode === 'multiply') nextVal = Math.max(1, Math.round(currentVal * config.countValue));
+            else if (config.countMode === 'add') nextVal = Math.max(1, Math.round(currentVal + config.countValue));
+
+            if (typeof reward.item === 'object' && reward.item !== null && (reward.item.Count !== undefined || reward.item.count !== undefined)) {
+              const isCapital = reward.item.Count !== undefined;
+              const k = isCapital ? 'Count' : 'count';
+              const currObj = reward.item[k];
+              reward.item = {
+                ...reward.item,
+                [k]: typeof currObj === 'object' && currObj !== null ? { ...currObj, value: nextVal } : nextVal
+              };
+            } else {
+              if (typeof reward.count === 'object' && reward.count !== null) reward.count = { ...reward.count, value: nextVal };
+              else reward.count = nextVal;
+            }
+          }
+        }
+
+        rewardsArray[idx] = reward;
+      });
+
+      return { id: qId, updates: { rewards: rewardsArray } };
+    }).filter(Boolean) as { id: string; updates: any }[];
+
+    if (updatesList.length > 0) updateQuest(updatesList);
+    setIsBatchModalOpen(false);
+  };
+
+  // --- 10. ELIMINACIÓN MASIVA DE SELECCIONADOS ---
+  const handleBatchDelete = () => {
+    if (subTab === 'quests') {
+      if (selectedQuestIds.size === 0) return;
+      if (window.confirm(`¿Seguro que deseas eliminar las ${selectedQuestIds.size} misiones seleccionadas?`)) {
+        const nextQuests = quests.filter(q => !selectedQuestIds.has(q.id));
+        updateQuest(nextQuests, undefined);
+        setSelectedQuestIds(new Set());
+      }
+    } else if (subTab === 'tasks') {
+      if (selectedTaskKeys.size === 0) return;
+      if (window.confirm(`¿Seguro que deseas quitar las ${selectedTaskKeys.size} tareas seleccionadas?`)) {
+        const tasksByQuest: { [questId: string]: number[] } = {};
+        selectedTaskKeys.forEach(key => {
+          const [qId, idxStr] = key.split(':');
+          if (!tasksByQuest[qId]) tasksByQuest[qId] = [];
+          tasksByQuest[qId].push(parseInt(idxStr, 10));
+        });
+
+        const updatesList = Object.keys(tasksByQuest).map(qId => {
+          const quest = quests.find(q => q.id === qId);
+          if (!quest) return null;
+          const tasksArray = Array.isArray(quest.tasks) ? [...quest.tasks] : (quest.tasks ? [quest.tasks] : []);
+          const indices = tasksByQuest[qId].sort((a, b) => b - a);
+          indices.forEach(idx => {
+            tasksArray.splice(idx, 1);
+          });
+          return { id: qId, updates: { tasks: tasksArray } };
+        }).filter(Boolean) as { id: string; updates: any }[];
+
+        if (updatesList.length > 0) updateQuest(updatesList);
+        setSelectedTaskKeys(new Set());
+      }
+    } else if (subTab === 'rewards') {
+      if (selectedRewardKeys.size === 0) return;
+      if (window.confirm(`¿Seguro que deseas quitar las ${selectedRewardKeys.size} recompensas seleccionadas?`)) {
+        const rewardsByQuest: { [questId: string]: number[] } = {};
+        selectedRewardKeys.forEach(key => {
+          const [qId, idxStr] = key.split(':');
+          if (!rewardsByQuest[qId]) rewardsByQuest[qId] = [];
+          rewardsByQuest[qId].push(parseInt(idxStr, 10));
+        });
+
+        const updatesList = Object.keys(rewardsByQuest).map(qId => {
+          const quest = quests.find(q => q.id === qId);
+          if (!quest) return null;
+          const rewardsArray = Array.isArray(quest.rewards) ? [...quest.rewards] : (quest.rewards ? [quest.rewards] : []);
+          const indices = rewardsByQuest[qId].sort((a, b) => b - a);
+          indices.forEach(idx => {
+            rewardsArray.splice(idx, 1);
+          });
+          return { id: qId, updates: { rewards: rewardsArray } };
+        }).filter(Boolean) as { id: string; updates: any }[];
+
+        if (updatesList.length > 0) updateQuest(updatesList);
+        setSelectedRewardKeys(new Set());
+      }
+    }
+  };
+
+  // --- 11. EXPORTACIÓN A CSV ---
+  const handleExportCsv = () => {
+    const escapeCsv = (val: any) => {
+      if (val === undefined || val === null) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    let headers: string[] = [];
+    let rows: string[][] = [];
+    let filename = 'ftb_misiones.csv';
+
+    if (subTab === 'quests') {
+      filename = 'misiones.csv';
+      headers = ['ID', 'Título', 'Icono', 'X', 'Y', 'Tamaño', 'Forma', 'Ocultar Deps'];
+      rows = filteredQuests.map(q => [
+        q.id,
+        q.title || '',
+        q.icon || '',
+        String(getDValue(q.x) ?? 0),
+        String(getDValue(q.y) ?? 0),
+        String(getDValue(q.size) ?? 1.0),
+        q.shape || 'circle',
+        q.hide_until_deps_complete ? 'true' : 'false'
+      ]);
+    } else if (subTab === 'tasks') {
+      filename = 'tareas.csv';
+      headers = ['Misión ID', 'Misión Título', 'ID Tarea', 'Tipo', 'Ítem / Entidad', 'Cantidad', 'Consumir Ítems'];
+      rows = filteredTasks.map(t => {
+        const isKill = t.taskObj.type === 'kill';
+        const itemVal = isKill 
+          ? (getDValue(t.taskObj.entity) || getDValue(t.taskObj.monster) || '')
+          : (typeof t.taskObj.item === 'string' ? t.taskObj.item : (t.taskObj.item?.id || ''));
+        const countVal = isKill 
+          ? (getDValue(t.taskObj.value) ?? 1)
+          : (t.taskObj.count !== undefined 
+              ? getDValue(t.taskObj.count) 
+              : (typeof t.taskObj.item === 'object' && t.taskObj.item !== null ? (getDValue(t.taskObj.item.Count) ?? 1) : 1));
+        return [
+          t.questId,
+          t.questTitle,
+          t.taskObj.id || '',
+          t.taskObj.type || 'item',
+          itemVal,
+          String(countVal),
+          t.taskObj.consume_items ? 'true' : 'false'
+        ];
+      });
+    } else if (subTab === 'rewards') {
+      filename = 'recompensas.csv';
+      headers = ['Misión ID', 'Misión Título', 'ID Recompensa', 'Tipo', 'Ítem / Comando / Tabla', 'Cantidad', 'Bono Aleatorio', 'Auto Claim', 'Por Equipo'];
+      rows = filteredRewards.map(r => {
+        const itemVal = r.rewardObj.type === 'command'
+          ? (getDValue(r.rewardObj.command) || '')
+          : (typeof r.rewardObj.item === 'string'
+              ? r.rewardObj.item
+              : (getDValue(r.rewardObj.item?.id) || r.rewardObj.table_id || ''));
+        const countVal = r.rewardObj.count !== undefined 
+          ? getDValue(r.rewardObj.count) 
+          : (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null ? (getDValue(r.rewardObj.item.Count) ?? 1) : 1);
+        return [
+          r.questId,
+          r.questTitle,
+          r.rewardObj.id || '',
+          r.rewardObj.type || 'xp',
+          itemVal,
+          String(countVal),
+          String(r.rewardObj.random_bonus ?? ''),
+          r.rewardObj.auto || 'default',
+          r.rewardObj.team_reward ? 'true' : 'false'
+        ];
+      });
+    }
+
+    const csvContent = '\uFEFF' + [
+      headers.map(escapeCsv).join(','),
+      ...rows.map(row => row.map(escapeCsv).join(','))
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="table-view-container">
-      {/* Selector de Pestañas Interno e Input de Búsqueda */}
+      {/* Barra Superior: Pestañas, Búsqueda, Acciones Rápidas */}
       <div className="table-view-header">
         <div className="table-tabs">
           <button 
@@ -393,15 +1040,37 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           </button>
         </div>
 
-        <div className="table-search-wrapper">
-          <Search size={16} className="table-search-icon" />
-          <input 
-            type="text" 
-            placeholder={`Buscar por ID, título ${subTab !== 'quests' ? 'o ítem' : ''}...`}
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            className="table-search-input"
-          />
+        <div className="table-header-actions">
+          <div className="table-search-wrapper">
+            <Search size={16} className="table-search-icon" />
+            <input 
+              type="text" 
+              placeholder={`Buscar por ID, título ${subTab !== 'quests' ? 'o ítem' : ''}...`}
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              className="table-search-input"
+            />
+          </div>
+
+          <button 
+            className="btn btn-secondary"
+            onClick={() => setIsBatchModalOpen(true)}
+            title="Abrir panel de modificaciones masivas"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+          >
+            <Sparkles size={15} color="var(--accent-color)" />
+            <span>Modificación Masiva</span>
+          </button>
+
+          <button 
+            className="btn btn-secondary"
+            onClick={handleExportCsv}
+            title="Descargar tabla actual en formato CSV para Excel"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+          >
+            <Download size={15} />
+            <span>Exportar CSV</span>
+          </button>
         </div>
       </div>
 
@@ -411,13 +1080,23 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                {renderHeader('quests-id', 'ID')}
-                {renderHeader('quests-title', 'Título')}
+                {renderHeader('quests-select', (
+                  <input 
+                    type="checkbox"
+                    className="table-checkbox"
+                    checked={isAllQuestsVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = isSomeQuestsVisibleSelected; }}
+                    onChange={toggleAllQuestsVisible}
+                    title="Seleccionar/Deseleccionar misiones visibles en esta página"
+                  />
+                ), undefined, { textAlign: 'center' })}
+                {renderHeader('quests-id', 'ID', 'id')}
+                {renderHeader('quests-title', 'Título', 'title')}
                 {renderHeader('quests-icon', 'Icono')}
-                {renderHeader('quests-x', 'X')}
-                {renderHeader('quests-y', 'Y')}
-                {renderHeader('quests-size', 'Tamaño')}
-                {renderHeader('quests-shape', 'Forma (Shape)')}
+                {renderHeader('quests-x', 'X', 'x')}
+                {renderHeader('quests-y', 'Y', 'y')}
+                {renderHeader('quests-size', 'Tamaño', 'size')}
+                {renderHeader('quests-shape', 'Forma (Shape)', 'shape')}
                 {renderHeader('quests-hide_deps', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Ocultar Deps</span>
@@ -438,129 +1117,144 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
-                {renderHeader('quests-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
+                {renderHeader('quests-actions', 'Acciones', undefined, { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
-              {filteredQuests.map((q) => (
-                <tr key={q.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className="table-cell-id">{q.id}</span>
-                      <button 
-                        className="btn-icon" 
-                        style={{ padding: '2px' }} 
-                        onClick={() => handleCopyId(q.id)}
-                        title="Copiar ID"
-                      >
-                        {copiedId === q.id ? <span style={{ color: '#2ecc71', fontSize: '0.75rem' }}>Listo</span> : <Clipboard size={14} />}
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <input 
-                      type="text" 
-                      className="table-input"
-                      value={q.title || ''}
-                      onChange={(e) => updateQuest(q.id, { title: e.target.value })}
-                      placeholder="Sin título"
-                    />
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {paginatedQuests.map((q) => {
+                const isSelected = selectedQuestIds.has(q.id);
+                return (
+                  <tr key={q.id} className={isSelected ? 'row-selected' : ''}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox"
+                        className="table-checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleQuestSelect(q.id)}
+                      />
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="table-cell-id">{q.id}</span>
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '2px' }} 
+                          onClick={() => handleCopyId(q.id)}
+                          title="Copiar ID"
+                        >
+                          {copiedId === q.id ? <span style={{ color: '#2ecc71', fontSize: '0.75rem' }}>Listo</span> : <Clipboard size={14} />}
+                        </button>
+                      </div>
+                    </td>
+                    <td>
                       <input 
                         type="text" 
                         className="table-input"
-                        value={q.icon || ''}
+                        value={q.title || ''}
+                        onChange={(e) => updateQuest(q.id, { title: e.target.value })}
+                        placeholder="Sin título"
+                      />
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="table-input"
+                          value={q.icon || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateQuest(q.id, { icon: val ? val : undefined });
+                          }}
+                          placeholder="Ej: minecraft:apple"
+                        />
+                        {q.icon && (
+                          <button 
+                            className="btn-icon" 
+                            style={{ padding: '4px', color: 'var(--text-secondary)' }}
+                            onClick={() => updateQuest(q.id, { icon: undefined })}
+                            title="Quitar icono"
+                          >
+                            <span style={{ fontSize: '1rem', lineHeight: '1', fontWeight: 'bold' }}>×</span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <input 
+                        type="number" 
+                        step="0.5" 
+                        className="table-input"
+                        value={getDValue(q.x) ?? 0}
+                        onChange={(e) => updateQuest(q.id, { x: { __type: 'number', value: parseFloat(e.target.value) || 0, suffix: 'd' } })}
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        type="number" 
+                        step="0.5" 
+                        className="table-input"
+                        value={getDValue(q.y) ?? 0}
+                        onChange={(e) => updateQuest(q.id, { y: { __type: 'number', value: parseFloat(e.target.value) || 0, suffix: 'd' } })}
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        type="number" 
+                        step="0.5" 
+                        className="table-input"
+                        value={getDValue(q.size) ?? 1.0}
+                        onChange={(e) => updateQuest(q.id, { size: { __type: 'number', value: parseFloat(e.target.value) || 1.0, suffix: 'd' } })}
+                      />
+                    </td>
+                    <td>
+                      <select 
+                        className="table-select"
+                        value={q.shape || 'circle'}
+                        onChange={(e) => updateQuest(q.id, { shape: e.target.value })}
+                      >
+                        <option value="circle">Circle</option>
+                        <option value="gear">Gear</option>
+                        <option value="octagon">Octagon</option>
+                        <option value="rsquare">Rounded Square</option>
+                        <option value="diamond">Diamond</option>
+                        <option value="square">Square</option>
+                        <option value="hexagon">Hexagon</option>
+                        <option value="heart">Heart</option>
+                        <option value="pentagon">Pentagon</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <select 
+                        className="table-select"
+                        value={q.hide_until_deps_complete === undefined ? 'default' : (q.hide_until_deps_complete ? 'true' : 'false')}
                         onChange={(e) => {
                           const val = e.target.value;
-                          updateQuest(q.id, { icon: val ? val : undefined });
+                          const nextVal = val === 'default' ? undefined : (val === 'true');
+                          updateQuest(q.id, { hide_until_deps_complete: nextVal });
                         }}
-                        placeholder="Ej: minecraft:apple"
-                      />
-                      {q.icon && (
-                        <button 
-                          className="btn-icon" 
-                          style={{ padding: '4px', color: 'var(--text-secondary)' }}
-                          onClick={() => updateQuest(q.id, { icon: undefined })}
-                          title="Quitar icono"
-                        >
-                          <span style={{ fontSize: '1rem', lineHeight: '1', fontWeight: 'bold' }}>×</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <input 
-                      type="number" 
-                      step="0.5" 
-                      className="table-input"
-                      value={getDValue(q.x) ?? 0}
-                      onChange={(e) => updateQuest(q.id, { x: { __type: 'number', value: parseFloat(e.target.value) || 0, suffix: 'd' } })}
-                    />
-                  </td>
-                  <td>
-                    <input 
-                      type="number" 
-                      step="0.5" 
-                      className="table-input"
-                      value={getDValue(q.y) ?? 0}
-                      onChange={(e) => updateQuest(q.id, { y: { __type: 'number', value: parseFloat(e.target.value) || 0, suffix: 'd' } })}
-                    />
-                  </td>
-                  <td>
-                    <input 
-                      type="number" 
-                      step="0.5" 
-                      className="table-input"
-                      value={getDValue(q.size) ?? 1.0}
-                      onChange={(e) => updateQuest(q.id, { size: { __type: 'number', value: parseFloat(e.target.value) || 1.0, suffix: 'd' } })}
-                    />
-                  </td>
-                  <td>
-                    <select 
-                      className="table-select"
-                      value={q.shape || 'circle'}
-                      onChange={(e) => updateQuest(q.id, { shape: e.target.value })}
-                    >
-                      <option value="circle">Circle</option>
-                      <option value="gear">Gear</option>
-                      <option value="octagon">Octagon</option>
-                      <option value="rsquare">Rounded Square</option>
-                      <option value="diamond">Diamond</option>
-                    </select>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <select 
-                      className="table-select"
-                      value={q.hide_until_deps_complete === undefined ? 'default' : (q.hide_until_deps_complete ? 'true' : 'false')}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const nextVal = val === 'default' ? undefined : (val === 'true');
-                        updateQuest(q.id, { hide_until_deps_complete: nextVal });
-                      }}
-                    >
-                      <option value="default">Por Defecto</option>
-                      <option value="true">Sí (True)</option>
-                      <option value="false">No (False)</option>
-                    </select>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button 
-                      className="btn-icon" 
-                      style={{ color: 'var(--danger-color)' }}
-                      onClick={() => handleDeleteQuest(q.id)}
-                      title="Eliminar misión"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      >
+                        <option value="default">Por Defecto</option>
+                        <option value="true">Sí (True)</option>
+                        <option value="false">No (False)</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button 
+                        className="btn-icon" 
+                        style={{ color: 'var(--danger-color)' }}
+                        onClick={() => handleDeleteQuest(q.id)}
+                        title="Eliminar misión"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {filteredQuests.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                     No se encontraron misiones que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -573,11 +1267,21 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                {renderHeader('tasks-parent', 'Misión Padre')}
-                {renderHeader('tasks-id', 'ID Tarea')}
-                {renderHeader('tasks-type', 'Tipo')}
-                {renderHeader('tasks-item', 'Ítem / Target')}
-                {renderHeader('tasks-count', 'Cantidad')}
+                {renderHeader('tasks-select', (
+                  <input 
+                    type="checkbox"
+                    className="table-checkbox"
+                    checked={isAllTasksVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = isSomeTasksVisibleSelected; }}
+                    onChange={toggleAllTasksVisible}
+                    title="Seleccionar/Deseleccionar tareas visibles en esta página"
+                  />
+                ), undefined, { textAlign: 'center' })}
+                {renderHeader('tasks-parent', 'Misión Padre', 'questTitle')}
+                {renderHeader('tasks-id', 'ID Tarea', 'id')}
+                {renderHeader('tasks-type', 'Tipo', 'type')}
+                {renderHeader('tasks-item', 'Ítem / Target', 'item')}
+                {renderHeader('tasks-count', 'Cantidad', 'count')}
                 {renderHeader('tasks-consume', (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <input 
@@ -589,12 +1293,14 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                     />
                     <span>Consumir Ítems</span>
                   </div>
-                ), { textAlign: 'center' })}
-                {renderHeader('tasks-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
+                ), 'consume', { textAlign: 'center' })}
+                {renderHeader('tasks-actions', 'Acciones', undefined, { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.map((t, idx) => {
+              {paginatedTasks.map((t) => {
+                const taskKey = `${t.questId}:${t.taskIndex}`;
+                const isSelected = selectedTaskKeys.has(taskKey);
                 const isKillType = t.taskObj.type === 'kill';
                 const itemVal = isKillType 
                   ? (getDValue(t.taskObj.entity) || getDValue(t.taskObj.monster) || '')
@@ -611,7 +1317,15 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                     );
 
                 return (
-                  <tr key={`${t.questId}-task-${idx}`}>
+                  <tr key={taskKey} className={isSelected ? 'row-selected' : ''}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox"
+                        className="table-checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleTaskSelect(taskKey)}
+                      />
+                    </td>
                     <td>
                       <div className="parent-quest-badge">
                         <Tag size={12} />
@@ -733,8 +1447,6 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                               handleUpdateTask(t.questId, t.taskIndex, { value: val });
                             }
                           } else {
-                            // Si es tipo item:
-                            // Si la cantidad ya estaba en t.taskObj.item.Count (u objeto), la editamos allí
                             if (typeof t.taskObj.item === 'object' && t.taskObj.item !== null && (t.taskObj.item.Count !== undefined || t.taskObj.item.count !== undefined)) {
                               const isCapitalCount = t.taskObj.item.Count !== undefined;
                               const countKey = isCapitalCount ? 'Count' : 'count';
@@ -748,7 +1460,6 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                               };
                               handleUpdateTask(t.questId, t.taskIndex, { item: updatedItem });
                             } else {
-                              // De lo contrario, lo editamos en count a nivel de raíz
                               if (typeof t.taskObj.count === 'object' && t.taskObj.count !== null) {
                                 handleUpdateTask(t.questId, t.taskIndex, { count: { ...t.taskObj.count, value: val } });
                               } else {
@@ -783,7 +1494,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
               })}
               {filteredTasks.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                     No se encontraron tareas que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -796,12 +1507,22 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           <table className="editor-table">
             <thead>
               <tr>
-                {renderHeader('rewards-parent', 'Misión Padre')}
-                {renderHeader('rewards-id', 'ID Recompensa')}
-                {renderHeader('rewards-type', 'Tipo')}
-                {renderHeader('rewards-item', 'Ítem / Comando / Tabla')}
-                {renderHeader('rewards-count', 'Cantidad')}
-                {renderHeader('rewards-bonus', 'Bono Aleatorio', { textAlign: 'center' })}
+                {renderHeader('rewards-select', (
+                  <input 
+                    type="checkbox"
+                    className="table-checkbox"
+                    checked={isAllRewardsVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = isSomeRewardsVisibleSelected; }}
+                    onChange={toggleAllRewardsVisible}
+                    title="Seleccionar/Deseleccionar recompensas visibles en esta página"
+                  />
+                ), undefined, { textAlign: 'center' })}
+                {renderHeader('rewards-parent', 'Misión Padre', 'questTitle')}
+                {renderHeader('rewards-id', 'ID Recompensa', 'id')}
+                {renderHeader('rewards-type', 'Tipo', 'type')}
+                {renderHeader('rewards-item', 'Ítem / Comando / Tabla', 'item')}
+                {renderHeader('rewards-count', 'Cantidad', 'count')}
+                {renderHeader('rewards-bonus', 'Bono Aleatorio', undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-auto', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Auto-Claim</span>
@@ -821,7 +1542,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="no_toast">No Toast</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-team', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Por Equipo</span>
@@ -839,7 +1560,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (Individual)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), 'team', { textAlign: 'center' })}
                 {renderHeader('rewards-op', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Permisos OP</span>
@@ -857,7 +1578,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-ignore_block', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Ignorar Bloqueo</span>
@@ -875,7 +1596,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-claim_all', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Excluir Claim All</span>
@@ -893,7 +1614,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-silent', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Silencioso</span>
@@ -911,7 +1632,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-only_one', (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '0.8rem' }}>Sólo Uno</span>
@@ -929,14 +1650,16 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                       <option value="false">No (False)</option>
                     </select>
                   </div>
-                ), { textAlign: 'center' })}
+                ), undefined, { textAlign: 'center' })}
                 {renderHeader('rewards-title', 'Título Custom')}
                 {renderHeader('rewards-icon', 'Ícono Custom')}
-                {renderHeader('rewards-actions', 'Acciones', { width: '80px', textAlign: 'center' })}
+                {renderHeader('rewards-actions', 'Acciones', undefined, { width: '80px', textAlign: 'center' })}
               </tr>
             </thead>
             <tbody>
-              {filteredRewards.map((r, idx) => {
+              {paginatedRewards.map((r) => {
+                const rewardKey = `${r.questId}:${r.rewardIndex}`;
+                const isSelected = selectedRewardKeys.has(rewardKey);
                 const itemVal = r.rewardObj.type === 'command'
                   ? (getDValue(r.rewardObj.command) || '')
                   : (typeof r.rewardObj.item === 'string'
@@ -948,8 +1671,17 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                   : (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null
                       ? (getDValue(r.rewardObj.item.Count) ?? getDValue(r.rewardObj.item.count) ?? 1)
                       : 1);
+
                 return (
-                  <tr key={`${r.questId}-reward-${idx}`}>
+                  <tr key={rewardKey} className={isSelected ? 'row-selected' : ''}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox"
+                        className="table-checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleRewardSelect(rewardKey)}
+                      />
+                    </td>
                     <td>
                       <div className="parent-quest-badge" style={{ backgroundColor: 'rgba(46, 204, 113, 0.15)', color: '#a2f9be', borderColor: 'rgba(46, 204, 113, 0.2)' }}>
                         <Gift size={12} />
@@ -1023,7 +1755,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                             const val = e.target.value;
                             handleUpdateRewardProperty(r.questId, r.rewardIndex, 'table_id', val);
                           }}
-                          placeholder="Loot Table ID / Hex (ej. 4196188979167302596L)"
+                          placeholder="Loot Table ID / Hex"
                           style={{ width: '100%' }}
                         />
                       ) : (
@@ -1256,7 +1988,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
               })}
               {filteredRewards.length === 0 && (
                 <tr>
-                  <td colSpan={16} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                     No se encontraron recompensas que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -1265,6 +1997,142 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           </table>
         )}
       </div>
+
+      {/* Barra Inferior de Paginación */}
+      <div className="table-pagination-footer">
+        <div className="pagination-info">
+          <span>
+            Mostrando {currentTotal === 0 ? 0 : (pageSize === 'all' ? 1 : ((currentPage - 1) * (pageSize as number) + 1))} - {pageSize === 'all' ? currentTotal : Math.min(currentPage * (pageSize as number), currentTotal)} de {currentTotal.toLocaleString()} elementos
+          </span>
+          {pageSize !== 'all' && (
+            <span style={{ color: 'var(--text-secondary)', marginLeft: '6px' }}>
+              (Página {currentPage} de {totalPages})
+            </span>
+          )}
+        </div>
+
+        <div className="pagination-controls">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '16px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Filas:</span>
+            <select 
+              className="table-select"
+              style={{ width: '80px', height: '28px', padding: '2px 6px', fontSize: '0.8rem' }}
+              value={pageSize}
+              onChange={(e) => {
+                const val = e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10);
+                setPageSize(val);
+              }}
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="250">250</option>
+              <option value="all">Todas</option>
+            </select>
+          </div>
+
+          {pageSize !== 'all' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button 
+                className="btn-icon"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+                title="Primera página"
+                style={{ opacity: currentPage <= 1 ? 0.4 : 1, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer' }}
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              <button 
+                className="btn-icon"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                title="Página anterior"
+                style={{ opacity: currentPage <= 1 ? 0.4 : 1, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer' }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              
+              <div style={{ margin: '0 8px', fontSize: '0.8rem', fontWeight: 600 }}>
+                {currentPage} / {totalPages}
+              </div>
+
+              <button 
+                className="btn-icon"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                title="Página siguiente"
+                style={{ opacity: currentPage >= totalPages ? 0.4 : 1, cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer' }}
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button 
+                className="btn-icon"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                title="Última página"
+                style={{ opacity: currentPage >= totalPages ? 0.4 : 1, cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer' }}
+              >
+                <ChevronsRight size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Barra Flotante de Acciones Masivas cuando hay Selección */}
+      {currentSelectedCount > 0 && (
+        <div className="table-floating-bar">
+          <div className="table-floating-content">
+            <div className="table-floating-badge">
+              <CheckSquare size={16} />
+              <span><strong>{currentSelectedCount}</strong> {subTab === 'quests' ? 'misiones' : subTab === 'tasks' ? 'tareas' : 'recompensas'} seleccionadas</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                className="btn btn-primary"
+                onClick={() => setIsBatchModalOpen(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.85rem' }}
+              >
+                <Sparkles size={15} />
+                <span>Modificar ({currentSelectedCount})</span>
+              </button>
+
+              <button 
+                className="btn btn-danger"
+                onClick={handleBatchDelete}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.85rem', backgroundColor: '#e74c3c', color: 'white' }}
+              >
+                <Trash2 size={15} />
+                <span>Eliminar ({currentSelectedCount})</span>
+              </button>
+
+              <button 
+                className="btn btn-secondary"
+                onClick={handleClearSelection}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', fontSize: '0.85rem' }}
+                title="Deseleccionar todo"
+              >
+                <X size={15} />
+                <span>Cancelar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Operaciones Masivas */}
+      <TableBatchModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        subTab={subTab}
+        selectedCount={currentSelectedCount}
+        totalFilteredCount={currentTotal}
+        onApplyQuestBatch={handleApplyQuestBatch}
+        onApplyTaskBatch={handleApplyTaskBatch}
+        onApplyRewardBatch={handleApplyRewardBatch}
+      />
     </div>
   );
 };
+

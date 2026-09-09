@@ -2285,3 +2285,100 @@ input::-webkit-calendar-picker-indicator:hover {
 .modal-overlay-picker .modal-content {
   z-index: 100201 !important;
 }
+
+/* ==========================================================================
+   Table View Enhancements (Batch Actions, Pagination, Selection)
+   ========================================================================== */
+
+.table-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-color);
+  border-radius: 4px;
+}
+
+.editor-table tr.row-selected td {
+  background-color: rgba(123, 97, 255, 0.12) !important;
+  color: #ffffff;
+}
+
+.editor-table tr.row-selected:hover td {
+  background-color: rgba(123, 97, 255, 0.18) !important;
+}
+
+/* Pagination Footer */
+.table-pagination-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(19, 21, 26, 0.95);
+  border: 1px solid var(--panel-border);
+  border-top: none;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.pagination-info {
+  display: flex;
+  align-items: center;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+}
+
+/* Floating Batch Action Bar */
+.table-floating-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  animation: tableBarSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tableBarSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.table-floating-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 20px;
+  background: rgba(24, 27, 34, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(123, 97, 255, 0.4);
+  border-radius: 50px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(123, 97, 255, 0.25);
+}
+
+.table-floating-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 0.88rem;
+}
