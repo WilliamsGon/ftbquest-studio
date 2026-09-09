@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { stringifySNBT } from './snbt';
 import { rewardTableToSNBT } from '../types/rewardTable';
 import type { RewardTable } from '../types/rewardTable';
+import type { ChapterGroup } from '../types/chapterGroup';
 
 export interface ZipExportFile {
   filename: string;
@@ -12,6 +13,7 @@ export interface ZipExportFile {
 export interface ModpackZipOptions {
   chapters: ZipExportFile[];
   rewardTables?: (RewardTable | ZipExportFile)[];
+  chapterGroups?: ChapterGroup[];
   zipName?: string;
   zipFilename?: string;
 }
@@ -29,7 +31,7 @@ export interface ModpackZipOptions {
  *             └── *.snbt
  */
 export async function exportModpackToZip(options: ModpackZipOptions): Promise<void> {
-  const { chapters, rewardTables = [], zipName, zipFilename } = options;
+  const { chapters, rewardTables = [], chapterGroups = [], zipName, zipFilename } = options;
   const finalZipName = zipFilename || zipName || 'ftbquests-modpack.zip';
 
   const zip = new JSZip();
@@ -63,6 +65,17 @@ export async function exportModpackToZip(options: ModpackZipOptions): Promise<vo
         }
       });
     }
+  }
+
+  // Archivo chapter_groups.snbt (si existen grupos de capítulos definidos)
+  if (chapterGroups && chapterGroups.length > 0) {
+    const groupsSNBT = stringifySNBT({
+      chapter_groups: chapterGroups.map((g) => ({
+        id: g.id,
+        title: g.title,
+      })),
+    });
+    zip.file(`${basePath}/chapter_groups.snbt`, groupsSNBT);
   }
 
   // Generar blob y descargar

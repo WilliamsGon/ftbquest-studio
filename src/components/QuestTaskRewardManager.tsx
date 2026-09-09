@@ -2,9 +2,16 @@ import React, { useState } from 'react';
 import { 
   Plus, Trash2, Copy, ChevronUp, ChevronDown, Settings, Search,
   Package, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
-  Gift, Terminal, Dices, Layers
+  Gift, Terminal, Dices, Layers, Trees, ShieldAlert
 } from 'lucide-react';
 import type { RewardTable } from '../types/rewardTable';
+import { 
+  MINECRAFT_ENTITIES, 
+  MINECRAFT_BIOMES, 
+  MINECRAFT_STRUCTURES, 
+  MINECRAFT_DIMENSIONS, 
+  GAMESTAGE_PRESETS 
+} from '../utils/minecraftCatalogs';
 
 interface QuestTaskRewardManagerProps {
   tasks: any[];
@@ -199,6 +206,20 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
           value: { __type: 'number', value: 100, suffix: 'L' }
         };
         break;
+      case 'biome':
+        newTask = {
+          id: newId,
+          type: 'biome',
+          biome: 'minecraft:plains',
+        };
+        break;
+      case 'gamestage':
+        newTask = {
+          id: newId,
+          type: 'gamestage',
+          stage: 'stage_one',
+        };
+        break;
       default:
         newTask = { id: newId, type };
         break;
@@ -347,6 +368,10 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
         return { icon: <Castle size={13} />, label: 'Estructura', color: '#fab387', bg: 'rgba(250, 179, 135, 0.15)' };
       case 'xp':
         return { icon: <Sparkles size={13} />, label: 'XP Requerida', color: '#94e2d5', bg: 'rgba(148, 226, 213, 0.15)' };
+      case 'biome':
+        return { icon: <Trees size={13} />, label: 'Bioma', color: '#a6e3a1', bg: 'rgba(166, 227, 161, 0.15)' };
+      case 'gamestage':
+        return { icon: <ShieldAlert size={13} />, label: 'GameStage', color: '#f5c2e7', bg: 'rgba(245, 194, 231, 0.15)' };
       default:
         return { icon: <Layers size={13} />, label: type || 'Tarea', color: '#a6adc8', bg: 'rgba(166, 173, 200, 0.15)' };
     }
@@ -473,6 +498,20 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                   onClick={() => addTaskPreset('structure')}
                 >
                   <Castle size={14} style={{ color: '#fab387' }} /> 🏛️ Estructura
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('biome')}
+                >
+                  <Trees size={14} style={{ color: '#a6e3a1' }} /> 🏞️ Descubrir Bioma
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('gamestage')}
+                >
+                  <ShieldAlert size={14} style={{ color: '#f5c2e7' }} /> 🔮 Etapa GameStage
                 </button>
                 <button 
                   className="btn btn-secondary" 
@@ -688,52 +727,145 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                   )}
 
                   {task.type === 'kill' && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="input-field" 
+                          list="minecraft-entities-datalist"
+                          style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px' }}
+                          value={task.entity || ''} 
+                          placeholder="Entidad o Mob (ej. minecraft:warden)"
+                          onChange={(e) => updateTaskField(tIdx, 'entity', e.target.value)}
+                        />
+                        <select
+                          className="input-field"
+                          style={{ width: 'auto', fontSize: '0.74rem', padding: '2px 6px' }}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateTaskField(tIdx, 'entity', e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Presets Mobs...</option>
+                          <optgroup label="Jefes (Bosses)">
+                            {MINECRAFT_ENTITIES.filter(m => m.category?.includes('Jefes')).map(m => (
+                              <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Vanilla Hostiles">
+                            {MINECRAFT_ENTITIES.filter(m => m.category === 'Vanilla Hostil').map(m => (
+                              <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Nether & Incursión">
+                            {MINECRAFT_ENTITIES.filter(m => m.category === 'Nether' || m.category === 'Incursión').map(m => (
+                              <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Twilight Forest">
+                            {MINECRAFT_ENTITIES.filter(m => m.category?.includes('Twilight')).map(m => (
+                              <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Cataclysm & Mods">
+                            {MINECRAFT_ENTITIES.filter(m => m.category?.includes('Cataclysm') || m.category?.includes('Alex') || m.category?.includes('Mowzie')).map(m => (
+                              <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Cantidad a eliminar:</label>
+                        <input 
+                          type="number" 
+                          className="input-field" 
+                          style={{ width: '80px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={task.value?.value || task.value || 1} 
+                          min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'value', { __type: 'number', value: parseInt(e.target.value) || 1, suffix: 'L' })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {task.type === 'biome' && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
                       <input 
                         type="text" 
                         className="input-field" 
-                        style={{ flex: 2, fontSize: '0.8rem', padding: '5px 8px' }}
-                        value={task.entity || ''} 
-                        placeholder="Entidad (ej. minecraft:zombie)"
-                        onChange={(e) => updateTaskField(tIdx, 'entity', e.target.value)}
+                        list="minecraft-biomes-datalist"
+                        style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px' }}
+                        value={task.biome || ''} 
+                        placeholder="Bioma a descubrir (ej. minecraft:deep_dark)"
+                        onChange={(e) => updateTaskField(tIdx, 'biome', e.target.value)}
                       />
-                      <input 
-                        type="number" 
-                        className="input-field" 
-                        style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px', textAlign: 'center' }}
-                        value={task.value?.value || task.value || 1} 
-                        min={1}
-                        placeholder="Cantidad"
-                        onChange={(e) => updateTaskField(tIdx, 'value', { __type: 'number', value: parseInt(e.target.value) || 1, suffix: 'L' })}
-                      />
+                      <select 
+                        className="input-field"
+                        style={{ width: 'auto', fontSize: '0.74rem', padding: '2px 6px' }}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            updateTaskField(tIdx, 'biome', e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Presets Biomas...</option>
+                        <optgroup label="Overworld">
+                          {MINECRAFT_BIOMES.filter(b => b.category?.includes('Overworld') || b.category === 'Subterráneo' || b.category === 'Océanos').map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Nether & End">
+                          {MINECRAFT_BIOMES.filter(b => b.category === 'Nether' || b.category === 'End').map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Biomas Modded">
+                          {MINECRAFT_BIOMES.filter(b => b.category?.includes('Mod')).map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </optgroup>
+                      </select>
                     </div>
                   )}
 
                   {task.type === 'dimension' && (
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
                       <input 
                         type="text" 
                         className="input-field" 
-                        style={{ fontSize: '0.8rem', padding: '5px 8px' }}
+                        list="minecraft-dimensions-datalist"
+                        style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px' }}
                         value={task.dimension || ''} 
                         placeholder="Dimensión (ej. minecraft:the_nether)"
                         onChange={(e) => updateTaskField(tIdx, 'dimension', e.target.value)}
                       />
                       <select 
                         className="input-field"
-                        style={{ width: 'auto', fontSize: '0.76rem', padding: '2px 6px' }}
+                        style={{ width: 'auto', fontSize: '0.74rem', padding: '2px 6px' }}
                         onChange={(e) => {
-                          if (e.target.value) updateTaskField(tIdx, 'dimension', e.target.value);
+                          if (e.target.value) {
+                            updateTaskField(tIdx, 'dimension', e.target.value);
+                            e.target.value = '';
+                          }
                         }}
-                        value=""
+                        defaultValue=""
                       >
-                        <option value="" disabled>Presets...</option>
-                        <option value="minecraft:overworld">Overworld</option>
-                        <option value="minecraft:the_nether">The Nether</option>
-                        <option value="minecraft:the_end">The End</option>
-                        <option value="twilightforest:twilight_forest">Twilight Forest</option>
-                        <option value="blue_skies:everbright">Everbright</option>
-                        <option value="blue_skies:everdawn">Everdawn</option>
+                        <option value="" disabled>Presets Dimensiones...</option>
+                        <optgroup label="Vanilla">
+                          {MINECRAFT_DIMENSIONS.filter(d => d.category === 'Vanilla').map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Mods Populares">
+                          {MINECRAFT_DIMENSIONS.filter(d => d.category?.includes('Mod')).map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
                   )}
@@ -752,14 +884,88 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                   )}
 
                   {task.type === 'structure' && (
-                    <div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
                       <input 
                         type="text" 
                         className="input-field" 
-                        style={{ fontSize: '0.8rem', padding: '5px 8px' }}
+                        list="minecraft-structures-datalist"
+                        style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px' }}
                         value={task.structure || ''} 
-                        placeholder="Estructura (ej. minecraft:fortress)"
+                        placeholder="Estructura a explorar (ej. minecraft:fortress)"
                         onChange={(e) => updateTaskField(tIdx, 'structure', e.target.value)}
+                      />
+                      <select 
+                        className="input-field"
+                        style={{ width: 'auto', fontSize: '0.74rem', padding: '2px 6px' }}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            updateTaskField(tIdx, 'structure', e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Presets Estructuras...</option>
+                        <optgroup label="Mazmorras & Templos">
+                          {MINECRAFT_STRUCTURES.filter(s => s.category === 'Mazmorras' || s.category === 'Templos').map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Aldeas & Exploración">
+                          {MINECRAFT_STRUCTURES.filter(s => s.category === 'Aldeas' || s.category === 'Exploración').map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Nether & End">
+                          {MINECRAFT_STRUCTURES.filter(s => s.category === 'Nether' || s.category === 'End').map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Estructuras Modded">
+                          {MINECRAFT_STRUCTURES.filter(s => s.category?.includes('Mod')).map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  )}
+
+                  {task.type === 'gamestage' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="input-field" 
+                          list="gamestages-datalist"
+                          style={{ flex: 1, fontSize: '0.8rem', padding: '5px 8px' }}
+                          value={task.stage || ''} 
+                          placeholder="Etapa GameStage (ej. stage_one)"
+                          onChange={(e) => updateTaskField(tIdx, 'stage', e.target.value)}
+                        />
+                        <select 
+                          className="input-field"
+                          style={{ width: 'auto', fontSize: '0.74rem', padding: '2px 6px' }}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateTaskField(tIdx, 'stage', e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Presets GameStages...</option>
+                          {GAMESTAGE_PRESETS.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        style={{ fontSize: '0.76rem', padding: '4px 8px' }}
+                        value={task.title || ''} 
+                        placeholder="Título descriptivo opcional para el jugador"
+                        onChange={(e) => updateTaskField(tIdx, 'title', e.target.value ? e.target.value : undefined)}
                       />
                     </div>
                   )}
@@ -1219,6 +1425,37 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Datalists para autocompletado nativo */}
+      <datalist id="minecraft-entities-datalist">
+        {MINECRAFT_ENTITIES.map((ent) => (
+          <option key={ent.id} value={ent.id}>{ent.name} {ent.category ? `(${ent.category})` : ''}</option>
+        ))}
+      </datalist>
+
+      <datalist id="minecraft-biomes-datalist">
+        {MINECRAFT_BIOMES.map((b) => (
+          <option key={b.id} value={b.id}>{b.name} {b.category ? `(${b.category})` : ''}</option>
+        ))}
+      </datalist>
+
+      <datalist id="minecraft-structures-datalist">
+        {MINECRAFT_STRUCTURES.map((s) => (
+          <option key={s.id} value={s.id}>{s.name} {s.category ? `(${s.category})` : ''}</option>
+        ))}
+      </datalist>
+
+      <datalist id="minecraft-dimensions-datalist">
+        {MINECRAFT_DIMENSIONS.map((d) => (
+          <option key={d.id} value={d.id}>{d.name} {d.category ? `(${d.category})` : ''}</option>
+        ))}
+      </datalist>
+
+      <datalist id="gamestages-datalist">
+        {GAMESTAGE_PRESETS.map((st) => (
+          <option key={st.id} value={st.id}>{st.name} {st.category ? `(${st.category})` : ''}</option>
+        ))}
+      </datalist>
 
     </div>
   );

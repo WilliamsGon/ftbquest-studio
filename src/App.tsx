@@ -13,6 +13,8 @@ import { ChapterTabBar } from './components/ChapterTabBar';
 import type { ChapterTab } from './types/chapter';
 import { RewardTableModal } from './components/RewardTableModal';
 import type { RewardTable } from './types/rewardTable';
+import { ChapterGroupModal } from './components/ChapterGroupModal';
+import type { ChapterGroup } from './types/chapterGroup';
 import { exportModpackToZip } from './utils/zipExporter';
 import { MinecraftTextToolbar } from './components/MinecraftTextToolbar';
 import { MinecraftFormattedPreview } from './components/MinecraftFormattedPreview';
@@ -161,6 +163,22 @@ function App() {
   const [isRewardTableModalOpen, setIsRewardTableModalOpen] = useState<boolean>(false);
   const [isCrossChapterModalOpen, setIsCrossChapterModalOpen] = useState<boolean>(false);
 
+  // Gestor de Grupos de Capítulos (chapter_groups.snbt)
+  const [chapterGroups, setChapterGroups] = useState<ChapterGroup[]>(() => {
+    try {
+      const stored = localStorage.getItem('ftb_chapter_groups');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error('Error loading chapter groups from localStorage:', e);
+    }
+    return [
+      { id: '7E48F1A2D091B3C4', title: 'Tutorial / Inicio' },
+      { id: '3A92F5C8E104D6B7', title: 'Tecnología' },
+      { id: '1B83D4E7F209A5C6', title: 'Magia y Dimensiones' },
+    ];
+  });
+  const [isChapterGroupModalOpen, setIsChapterGroupModalOpen] = useState<boolean>(false);
+
   // Referencias para manipulación de cursor/selección en barras de formato de texto Minecraft
   const titleInputRef = useRef<HTMLInputElement>(null);
   const subtitleInputRef = useRef<HTMLInputElement>(null);
@@ -307,6 +325,15 @@ function App() {
       localStorage.setItem('ftb_reward_tables', JSON.stringify(newTables));
     } catch (e) {
       console.error('Error saving reward tables:', e);
+    }
+  };
+
+  const handleUpdateChapterGroups = (newGroups: ChapterGroup[]) => {
+    setChapterGroups(newGroups);
+    try {
+      localStorage.setItem('ftb_chapter_groups', JSON.stringify(newGroups));
+    } catch (e) {
+      console.error('Error saving chapter groups:', e);
     }
   };
 
@@ -1580,8 +1607,8 @@ function App() {
       });
     }
 
-    if (allChapters.length === 0 && rewardTables.length === 0) {
-      showToast('No hay capítulos ni tablas de recompensas para exportar', 'warning');
+    if (allChapters.length === 0 && rewardTables.length === 0 && chapterGroups.length === 0) {
+      showToast('No hay capítulos, tablas ni grupos para exportar', 'warning');
       return;
     }
 
@@ -1590,6 +1617,7 @@ function App() {
       await exportModpackToZip({
         chapters: allChapters,
         rewardTables,
+        chapterGroups,
         zipFilename: 'ftbquests-modpack.zip'
       });
       showToast('¡Modpack .ZIP exportado exitosamente!', 'success');
@@ -2536,7 +2564,7 @@ function App() {
               <Download size={16} /> Exportar
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px', marginTop: '6px' }}>
             <button
               className="btn btn-secondary"
               style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
@@ -2546,6 +2574,8 @@ function App() {
             >
               <span>📦</span> Modpack (.zip)
             </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
             <button
               className="btn btn-secondary"
               style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
@@ -2553,6 +2583,14 @@ function App() {
               title="Gestor visual de Tablas de Recompensas (reward_tables / Loot Crates)"
             >
               <span>🎁</span> Tablas ({rewardTables.length})
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+              onClick={() => setIsChapterGroupModalOpen(true)}
+              title="Gestor visual de Grupos de Capítulos (chapter_groups.snbt)"
+            >
+              <span>📁</span> Grupos ({chapterGroups.length})
             </button>
           </div>
           {snbtData && (
@@ -3800,16 +3838,64 @@ function App() {
                 </div>
 
                 <div className="input-group">
-                  <label>Grupo</label>
-                  <input 
-                    type="text" 
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ margin: 0 }}>Grupo de Capítulos</label>
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ fontSize: '0.72rem', padding: '2px 6px', gap: '3px', display: 'flex', alignItems: 'center', color: 'var(--accent-color)' }}
+                      onClick={() => setIsChapterGroupModalOpen(true)}
+                      title="Abrir gestor visual de grupos"
+                    >
+                      <span>📁</span> Gestionar
+                    </button>
+                  </div>
+                  <select 
                     className="input-field"
                     value={getDValue(snbtData.group) || ''}
                     onChange={(e) => {
-                      const updated = { ...snbtData, group: e.target.value };
+                      const val = e.target.value;
+                      const updated = { ...snbtData };
+                      if (val === '') {
+                        delete updated.group;
+                      } else {
+                        updated.group = val;
+                      }
                       updateState(quests, images, false, updated);
                     }}
-                  />
+                  >
+                    <option value="">(Sin Grupo / Raíz)</option>
+                    {chapterGroups.map(grp => (
+                      <option key={grp.id} value={grp.id}>
+                        📁 {grp.title} ({grp.id.slice(0, 8)}...)
+                      </option>
+                    ))}
+                    {snbtData.group && !chapterGroups.some(g => g.id === getDValue(snbtData.group)) && (
+                      <option value={getDValue(snbtData.group)}>
+                        ❓ Personalizado: {getDValue(snbtData.group)}
+                      </option>
+                    )}
+                  </select>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Hex ID:</span>
+                    <input 
+                      type="text" 
+                      className="input-field" 
+                      style={{ fontSize: '0.75rem', padding: '2px 6px', fontFamily: 'monospace', height: '24px' }}
+                      placeholder="Vacío o Hex (ej. 7E48F1A2D091B3C4)"
+                      value={getDValue(snbtData.group) || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        const updated = { ...snbtData };
+                        if (val === '') {
+                          delete updated.group;
+                        } else {
+                          updated.group = val;
+                        }
+                        updateState(quests, images, false, updated);
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div className="row">
@@ -4658,6 +4744,30 @@ function App() {
           title: 'Seleccionar Ítem para Recompensa',
           onSelect
         })}
+      />
+    )}
+
+    {isChapterGroupModalOpen && (
+      <ChapterGroupModal
+        isOpen={isChapterGroupModalOpen}
+        onClose={() => setIsChapterGroupModalOpen(false)}
+        chapterGroups={chapterGroups}
+        onUpdateChapterGroups={handleUpdateChapterGroups}
+        chapters={tabs}
+        currentChapterId={activeTabId}
+        currentChapterGroup={snbtData ? getDValue(snbtData.group) || '' : ''}
+        onAssignCurrentChapterGroup={(groupId: string) => {
+          if (snbtData) {
+            const updated = { ...snbtData };
+            if (groupId) {
+              updated.group = groupId;
+            } else {
+              delete updated.group;
+            }
+            updateState(quests, images, false, updated);
+            showToast(groupId ? 'Grupo asignado al capítulo actual' : 'Grupo desasignado del capítulo', 'success');
+          }
+        }}
       />
     )}
 
