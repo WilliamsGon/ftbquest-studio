@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import useImage from 'use-image';
-import { MousePointer, Hand, Magnet, Sparkles, ChevronDown, Search } from 'lucide-react';
+import { MousePointer, Hand, Crosshair, Magnet, Sparkles, ChevronDown, Search } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
 import { Minimap } from './Minimap';
@@ -254,8 +254,18 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   onCompleteAllPlayerQuests
 }) => {
   const [isAutoLayoutMenuOpen, setIsAutoLayoutMenuOpen] = useState(false);
+  const hasSavedPos = Boolean(
+    initialStagePos && (initialStagePos.x !== 0 || initialStagePos.y !== 0)
+  );
   const [stageScale, setStageScale] = useState(initialStageScale ?? 1);
-  const [stagePos, setStagePos] = useState(initialStagePos ?? { x: 0, y: 0 });
+  const [stagePos, setStagePos] = useState<{ x: number; y: number }>(() => {
+    if (hasSavedPos && initialStagePos) {
+      return initialStagePos;
+    }
+    const defaultW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const defaultH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    return { x: defaultW / 2, y: defaultH / 2 };
+  });
   const [localSnapToGrid, setLocalSnapToGrid] = useState(true);
   const [localSnapMode, setLocalSnapMode] = useState<'relative' | 'absolute'>('relative');
   const snapToGrid = propSnapToGrid !== undefined ? propSnapToGrid : localSnapToGrid;
@@ -518,6 +528,18 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     });
   }, [dimensions, stageScale, setSelection]);
 
+  const centerOrigin = useCallback(() => {
+    const w = containerRef.current?.offsetWidth || dimensions.width;
+    const h = containerRef.current?.offsetHeight || dimensions.height;
+    const centerPos = {
+      x: w / 2,
+      y: h / 2
+    };
+    setStagePos(centerPos);
+    setStageScale(1);
+    onCameraChange?.(centerPos, 1);
+  }, [dimensions.width, dimensions.height, onCameraChange]);
+
   const handleNavigateMatch = useCallback((index: number) => {
     if (index < 0 || index >= searchMatches.length) return;
     setActiveMatchIndex(index);
@@ -530,20 +552,24 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     if (containerRef.current) {
+      const w = containerRef.current.offsetWidth;
+      const h = containerRef.current.offsetHeight;
       setDimensions({
-        width: containerRef.current.offsetWidth,
-        height: containerRef.current.offsetHeight
+        width: w,
+        height: h
       });
-      // Centrar el plano (0,0) en el medio de la pantalla si no hay initialStagePos
-      if (!initialStagePos) {
-        setStagePos({
-          x: containerRef.current.offsetWidth / 2,
-          y: containerRef.current.offsetHeight / 2
-        });
+      // Centrar el plano cartesiano (0, 0) en el medio exacto de la pantalla si no hay posición previa guardada
+      if (!hasSavedPos) {
+        const centerPos = {
+          x: w / 2,
+          y: h / 2
+        };
+        setStagePos(centerPos);
+        onCameraChange?.(centerPos, stageScale);
+      } else {
+        onCameraChange?.(stagePos, stageScale);
       }
     }
-
-    onCameraChange?.(stagePos, stageScale);
     
     const handleResize = () => {
       if (containerRef.current) {
@@ -707,6 +733,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             <span>⚡</span> Completar Todo
           </button>
           <button
+            className="btn btn-secondary"
+            style={{ padding: '3px 8px', fontSize: '0.73rem', gap: '4px' }}
+            onClick={centerOrigin}
+            title="Centrar vista en el Origen (0, 0)"
+          >
+            <Crosshair size={13} />
+          </button>
+          <button
             className={`btn btn-secondary ${isSearchOpen ? 'active' : ''}`}
             style={{ padding: '3px 8px', fontSize: '0.73rem', gap: '4px' }}
             onClick={() => {
@@ -746,6 +780,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
             aria-label="Mover Plano"
           >
             <Hand size={15} />
+          </button>
+          <button 
+            className="toolbar-btn icon-only"
+            onClick={centerOrigin}
+            title="Centrar vista en el Origen (0, 0) [Zoom 100%]"
+            aria-label="Centrar en (0, 0)"
+          >
+            <Crosshair size={15} />
           </button>
         </div>
 

@@ -145,7 +145,7 @@ function App() {
   const [tabs, setTabs] = useState<ChapterTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [isDirty, setIsDirty] = useState<boolean>(false);
-  const currentCameraRef = useRef<{ pos: { x: number; y: number }; scale: number }>({ pos: { x: 0, y: 0 }, scale: 1 });
+  const currentCameraRef = useRef<{ pos?: { x: number; y: number }; scale: number }>({ pos: undefined, scale: 1 });
 
   // Gestor de Tablas de Recompensas (reward_tables / Loot Crates)
   const [rewardTables, setRewardTables] = useState<RewardTable[]>(() => {
@@ -383,9 +383,16 @@ function App() {
 
     // Coordenadas aproximadas centradas en la vista actual del canvas
     const cam = currentCameraRef.current;
+    const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const scale = cam.scale || 1;
+    const posX = cam.pos?.x ?? (viewportW / 2);
+    const posY = cam.pos?.y ?? (viewportH / 2);
+    const worldCenterX = (viewportW / 2 - posX) / (scale * 40);
+    const worldCenterY = (viewportH / 2 - posY) / (scale * 40);
     const centerPos = {
-      x: Math.round((-cam.pos.x / (cam.scale || 1) / 40) * 2) / 2 || 0,
-      y: Math.round((-cam.pos.y / (cam.scale || 1) / 40) * 2) / 2 || 0
+      x: Math.round(worldCenterX * 2) / 2 || 0,
+      y: Math.round(worldCenterY * 2) / 2 || 0
     };
 
     const { newQuests } = instantiateBlueprint(bp, centerPos);
@@ -1094,7 +1101,7 @@ function App() {
     setViewMode(tab.viewMode || 'map');
     setIsDirty(!!tab.isDirty);
     currentCameraRef.current = {
-      pos: tab.stagePos || { x: 0, y: 0 },
+      pos: tab.stagePos,
       scale: tab.stageScale || 1
     };
   };
