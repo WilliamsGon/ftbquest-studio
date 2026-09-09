@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import useImage from 'use-image';
-import { MousePointer, Hand, Crosshair, Magnet, Sparkles, ChevronDown, Search } from 'lucide-react';
+import { MousePointer, Hand, Crosshair, Magnet, Sparkles, ChevronDown, Search, Zap } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
 import { Minimap } from './Minimap';
@@ -77,6 +77,9 @@ const getDValue = (obj: any): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
+// Cache en memoria para resolver URLs de texturas sin re-computar cadenas repetidas
+const candidateUrlCache = new Map<string, string[]>();
+
 // Helper para obtener las URLs candidatas a ser la textura
 const getCandidateUrls = (icon: any): string[] => {
   if (!icon) return [];
@@ -89,6 +92,8 @@ const getCandidateUrls = (icon: any): string[] => {
   }
 
   if (!iconStr) return [];
+  const cached = candidateUrlCache.get(iconStr);
+  if (cached) return cached;
 
   let namespace = 'minecraft';
   let path = 'stone';
@@ -123,11 +128,31 @@ const getCandidateUrls = (icon: any): string[] => {
     urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
   }
 
-  return Array.from(new Set(urls));
+  const result = Array.from(new Set(urls));
+  candidateUrlCache.set(iconStr, result);
+  return result;
 };
 
-// Componente para cargar texturas de FTB extraídas
-const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: number, opacity?: number }> = ({ icon, width, height, color, opacity = 1.0 }) => {
+interface FtbTextureProps {
+  icon: any;
+  width: number;
+  height: number;
+  color?: number;
+  opacity?: number;
+  lowQuality?: boolean;
+  skipIsometric?: boolean;
+}
+
+// Componente para cargar texturas de FTB extraídas (optimizado con soporte de calidad y culling)
+const FtbTexture: React.FC<FtbTextureProps> = ({ 
+  icon, 
+  width, 
+  height, 
+  color, 
+  opacity = 1.0, 
+  lowQuality = false,
+  skipIsometric = false
+}) => {
   const candidates = React.useMemo(() => getCandidateUrls(icon), [icon]);
   const [candidateIdx, setCandidateIdx] = useState(0);
   const imageRef = useRef<any>(null);
@@ -143,7 +168,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   const [isoCanvas, setIsoCanvas] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    if (status === 'loaded' && isBlock && currentUrl) {
+    if (status === 'loaded' && isBlock && currentUrl && !skipIsometric && !lowQuality) {
       let active = true;
       const targetSize = Math.max(32, Math.round(Math.max(width, height) * 1.5));
       getIsometricBlockCanvas(currentUrl, targetSize).then((c) => {
@@ -157,7 +182,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
     } else {
       setIsoCanvas(null);
     }
-  }, [status, isBlock, currentUrl, width, height]);
+  }, [status, isBlock, currentUrl, width, height, skipIsometric, lowQuality]);
 
   useEffect(() => {
     if (status === 'failed' && candidateIdx < candidates.length - 1) {
@@ -165,17 +190,17 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
     }
   }, [status, candidateIdx, candidates]);
 
-  const finalImage = (isBlock && isoCanvas) ? isoCanvas : image;
+  const finalImage = (isBlock && isoCanvas && !skipIsometric && !lowQuality) ? isoCanvas : image;
 
-  // Cachear para que los filtros tengan efecto
+  // Cachear para que los filtros tengan efecto solo en alta calidad
   useEffect(() => {
-    if (status === 'loaded' && imageRef.current && color !== undefined && color !== 16777215) {
+    if (!lowQuality && status === 'loaded' && imageRef.current && color !== undefined && color !== 16777215) {
       imageRef.current.cache();
     }
-  }, [finalImage, status, color, width, height]);
+  }, [finalImage, status, color, width, height, lowQuality]);
 
   if (status === 'loaded' && finalImage) {
-    const hasColorFilter = color !== undefined && color !== 16777215;
+    const hasColorFilter = !lowQuality && color !== undefined && color !== 16777215;
     let r = 255;
     let g = 255;
     let b = 255;
@@ -199,6 +224,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
         red={r}
         green={g}
         blue={b}
+        listening={false}
       />
     );
   }
@@ -210,6 +236,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
       fill="#1a1d24"
       stroke="#4a4d5c"
       strokeWidth={2}
+      listening={false}
     />
   );
 };
@@ -294,6 +321,71 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   });
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
 
+  // Modo Rendimiento & Calidad de Texturas (Optimización extrema para mapas masivos como farmer_board)
+  const isMassiveChapter = quests.length > 120 || images.length > 60;
+  const [performanceMode, setPerformanceMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ftb_performance_mode');
+    return saved !== null ? saved === 'true' : true; // Activado por defecto para fluidez garantizada
+  });
+  const [imageQuality, setImageQuality] = useState<'high' | 'low'>(() => {
+    const saved = localStorage.getItem('ftb_image_quality');
+    return saved === 'low' ? 'low' : 'high';
+  });
+
+  const isEcoActive = performanceMode || isMassiveChapter;
+  const isLowQualityImages = imageQuality === 'low' || (isMassiveChapter && performanceMode);
+
+  const togglePerformanceMode = useCallback(() => {
+    setPerformanceMode(prev => {
+      const next = !prev;
+      localStorage.setItem('ftb_performance_mode', String(next));
+      return next;
+    });
+  }, []);
+
+  const toggleImageQuality = useCallback(() => {
+    setImageQuality(prev => {
+      const next = prev === 'high' ? 'low' : 'high';
+      localStorage.setItem('ftb_image_quality', next);
+      return next;
+    });
+  }, []);
+
+  // Índice O(1) de misiones por ID (evita el costo O(N^2) de buscar dependencias repetidamente)
+  const questMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const q of quests) {
+      map.set(String(q.id), q);
+    }
+    return map;
+  }, [quests]);
+
+  // Precomputar aristas de dependencia solo cuando cambie el arreglo de misiones
+  const dependencyEdges = useMemo(() => {
+    const edges: { sourceQuest: any; targetQuest: any; depId: string }[] = [];
+    for (const q of quests) {
+      if (!q.dependencies) continue;
+      let depsArray: string[] = [];
+      if (Array.isArray(q.dependencies)) {
+        depsArray = q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
+      } else if (typeof q.dependencies === 'string') {
+        depsArray = [q.dependencies];
+      } else if (typeof q.dependencies === 'object' && q.dependencies !== null) {
+        const depObj = q.dependencies as any;
+        if (depObj.id) depsArray = [depObj.id];
+      }
+
+      for (const depId of depsArray) {
+        const depQuest = questMap.get(String(depId));
+        if (depQuest) {
+          edges.push({ sourceQuest: depQuest, targetQuest: q, depId: String(depId) });
+        }
+      }
+    }
+    return edges;
+  }, [quests, questMap]);
+
+
   // Estado de cada misión en modo vista jugador (completada, desbloqueada, visible)
   const questPlayerStates = useMemo(() => {
     if (!isPlayerMode) {
@@ -375,6 +467,71 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   const [draggingId, setDraggingId] = useState<string | number | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number, y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
+
+  // Límites del Viewport en coordenadas de mundo (Frustum Culling)
+  const viewportBounds = useMemo(() => {
+    const margin = (isEcoActive ? 220 : 400) / (stageScale || 1);
+    const minX = -stagePos.x / (stageScale || 1) - margin;
+    const maxX = (dimensions.width - stagePos.x) / (stageScale || 1) + margin;
+    const minY = -stagePos.y / (stageScale || 1) - margin;
+    const maxY = (dimensions.height - stagePos.y) / (stageScale || 1) + margin;
+    return { minX, maxX, minY, maxY };
+  }, [stagePos.x, stagePos.y, stageScale, dimensions.width, dimensions.height, isEcoActive]);
+
+  // Misiones visibles en pantalla con Frustum Culling activo
+  const visibleQuests = useMemo(() => {
+    if (quests.length < 35 && !isEcoActive) return quests;
+
+    const selectedIds = new Set(
+      selection.items.filter(i => i.type === 'quest').map(i => String(i.id))
+    );
+
+    return quests.filter(q => {
+      const qIdStr = String(q.id);
+      if (selectedIds.has(qIdStr) || draggingId === q.id) return true;
+
+      const qx = getDValue(q.x) * SCALE_FACTOR;
+      const qy = getDValue(q.y) * SCALE_FACTOR;
+      const sizeVal = getDValue(q.size) || 1.0;
+      const nodeRadius = (40 * sizeVal) / 2 + 25;
+
+      return (
+        qx + nodeRadius >= viewportBounds.minX &&
+        qx - nodeRadius <= viewportBounds.maxX &&
+        qy + nodeRadius >= viewportBounds.minY &&
+        qy - nodeRadius <= viewportBounds.maxY
+      );
+    });
+  }, [quests, viewportBounds, selection.items, draggingId, isEcoActive]);
+
+  // Imágenes visibles en pantalla con Frustum Culling activo
+  const visibleImages = useMemo(() => {
+    const indexed = images.map((img, idx) => ({ ...img, originalIndex: idx }));
+    if (images.length < 20 && !isEcoActive) return indexed;
+
+    const selectedImgIndices = new Set(
+      selection.items.filter(i => i.type === 'image').map(i => i.id as number)
+    );
+
+    return indexed.filter(img => {
+      if (selectedImgIndices.has(img.originalIndex) || draggingId === img.originalIndex) return true;
+
+      const ix = getDValue(img.x) * SCALE_FACTOR;
+      const iy = getDValue(img.y) * SCALE_FACTOR;
+      const w = getDValue(img.width) * SCALE_FACTOR;
+      const h = getDValue(img.height) * SCALE_FACTOR;
+      const halfW = w / 2;
+      const halfH = h / 2;
+
+      return (
+        ix + halfW >= viewportBounds.minX &&
+        ix - halfW <= viewportBounds.maxX &&
+        iy + halfH >= viewportBounds.minY &&
+        iy - halfH <= viewportBounds.maxY
+      );
+    });
+  }, [images, viewportBounds, selection.items, draggingId, isEcoActive]);
+
 
   // Conexión interactiva de dependencias (Wire Dragging)
   const [wireDrag, setWireDrag] = useState<{
@@ -830,6 +987,33 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
         <div className="toolbar-divider" />
 
+        {/* Grupo Optimización: Modo Rendimiento & Calidad de Texturas */}
+        <div className="toolbar-segmented-group">
+          <button 
+            className={`toolbar-btn icon-only ${performanceMode ? 'active' : ''}`}
+            onClick={togglePerformanceMode}
+            title={performanceMode 
+              ? "Modo Rendimiento: ACTIVADO (Frustum culling, 60fps fluidos en mapas masivos. Clic para desactivar)" 
+              : "Modo Rendimiento: DESACTIVADO (Renderizado completo. Clic para activar)"}
+            aria-label="Modo Rendimiento"
+            style={performanceMode ? { color: '#fbbf24', borderColor: 'rgba(251, 191, 36, 0.4)', background: 'rgba(251, 191, 36, 0.15)' } : {}}
+          >
+            <Zap size={15} />
+          </button>
+          <button
+            className="toolbar-btn snap-mode-pill"
+            onClick={toggleImageQuality}
+            title={imageQuality === 'low'
+              ? "Calidad de Texturas: RÁPIDA / ECO (Pixel-Art ligero sin filtros pesados, máxima velocidad. Clic para Alta)" 
+              : "Calidad de Texturas: ALTA (Filtros RGB y suavizado completo. Clic para Rápida / Eco)"}
+            style={imageQuality === 'low' ? { color: '#38bdf8' } : {}}
+          >
+            {imageQuality === 'low' ? '⚡Eco' : '🖼️HQ'}
+          </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
         {/* Grupo 3: Portapapeles de Prefabs Anclados */}
         <button 
           className={`toolbar-btn ${pinnedCount > 0 ? 'with-badge' : 'icon-only'} ${isPinnedDrawerOpen ? 'active' : ''}`}
@@ -1220,8 +1404,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
         {layersVisible.images && (
           <Layer>
-            {/* Ordenar imágenes por "order" antes de renderizar para simular z-index */}
-            {[...images].map((img, idx) => ({ ...img, originalIndex: idx }))
+            {/* Ordenar imágenes por "order" antes de renderizar para simular z-index con Culling */}
+            {[...visibleImages]
               .sort((a, b) => getDValue(a.order) - getDValue(b.order))
               .map((img) => {
               const idx = img.originalIndex;
@@ -1486,6 +1670,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     height={h} 
                     color={img.color?.value ?? img.color} 
                     opacity={img.alpha !== undefined ? getDValue(img.alpha?.value ?? img.alpha) / 255 : 1.0}
+                    lowQuality={isLowQualityImages}
+                    skipIsometric={true}
                   />
                   
                   {/* Borde de selección */}
@@ -1516,39 +1702,44 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
         {layersVisible.quests && (
           <Layer>
-            {/* Líneas de dependencia */}
-            {layersVisible.dependencies && quests.map((q) => {
-              if (!q.dependencies) return null;
-              
-              let depsArray: string[] = [];
-              if (Array.isArray(q.dependencies)) {
-                depsArray = q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
-              } else if (typeof q.dependencies === 'string') {
-                depsArray = [q.dependencies];
-              } else if (typeof q.dependencies === 'object' && q.dependencies !== null) {
-                const depObj = q.dependencies as any;
-                if (depObj.id) depsArray = [depObj.id];
-              }
-
-              const isDstSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
-              const dstX = getDValue(q.x) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.x : 0);
-              const dstY = getDValue(q.y) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.y : 0);
-              const dstSize = getDValue(q.size) || 1.0;
-              const dstRadius = (40 * dstSize) / 2;
-
-              return depsArray.map((depId) => {
-                const depQuest = quests.find(dq => dq.id === depId);
-                if (!depQuest) return null;
-
+            {/* Líneas de dependencia optimizadas (O(1) y Viewport Culling) */}
+            {layersVisible.dependencies && dependencyEdges.map(({ sourceQuest: depQuest, targetQuest: q, depId }) => {
                 if (isPlayerMode && (hiddenQuestIds.has(String(depId)) || hiddenQuestIds.has(String(q.id)))) {
                   return null;
                 }
+
+                const isDstSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
+                const dstX = getDValue(q.x) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.x : 0);
+                const dstY = getDValue(q.y) * SCALE_FACTOR + (isDstSelected && draggingId !== null ? dragOffset.y : 0);
+                const dstSize = getDValue(q.size) || 1.0;
+                const dstRadius = (40 * dstSize) / 2;
 
                 const isSrcSelected = selection.items.some(item => item.type === 'quest' && item.id === depQuest.id);
                 const srcX = getDValue(depQuest.x) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.x : 0);
                 const srcY = getDValue(depQuest.y) * SCALE_FACTOR + (isSrcSelected && draggingId !== null ? dragOffset.y : 0);
                 const srcSize = getDValue(depQuest.size) || 1.0;
                 const srcRadius = (40 * srcSize) / 2;
+
+                // Viewport Culling para cables: omitir si ambos extremos están fuera del viewport
+                const isDstInVp = dstX >= viewportBounds.minX && dstX <= viewportBounds.maxX &&
+                                  dstY >= viewportBounds.minY && dstY <= viewportBounds.maxY;
+                const isSrcInVp = srcX >= viewportBounds.minX && srcX <= viewportBounds.maxX &&
+                                  srcY >= viewportBounds.minY && srcY <= viewportBounds.maxY;
+
+                if (!isDstInVp && !isSrcInVp) {
+                  const minLineX = Math.min(srcX, dstX);
+                  const maxLineX = Math.max(srcX, dstX);
+                  const minLineY = Math.min(srcY, dstY);
+                  const maxLineY = Math.max(srcY, dstY);
+                  if (
+                    maxLineX < viewportBounds.minX ||
+                    minLineX > viewportBounds.maxX ||
+                    maxLineY < viewportBounds.minY ||
+                    minLineY > viewportBounds.maxY
+                  ) {
+                    return null;
+                  }
+                }
 
                 const dx = dstX - srcX;
                 const dy = dstY - srcY;
@@ -1682,10 +1873,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   );
                 }
                 return null;
-              });
             })}
             
-            {quests.map((q) => {
+            {visibleQuests.map((q) => {
               const qIdStr = String(q.id);
               const playerState = questPlayerStates.get(qIdStr);
               if (isPlayerMode && playerState && !playerState.isVisible) {
@@ -2013,10 +2203,11 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         : undefined
                     }
                   />
-                  <FtbTexture icon={iconObj} width={nodeSize * 0.72} height={nodeSize * 0.72} />
+                  <FtbTexture icon={iconObj} width={nodeSize * 0.72} height={nodeSize * 0.72} lowQuality={isLowQualityImages} />
                   
-                  {/* Título de la misión con soporte de color y formato limpio */}
+                  {/* Título de la misión con soporte de color, formato limpio y LOD */}
                   {(() => {
+                    if (stageScale < 0.35 && isEcoActive) return null;
                     const rawTitle = q.title || "Misión";
                     const displayTitle = stripMinecraftFormatting(rawTitle);
                     const titleColor = getFirstMinecraftColor(rawTitle) || 'white';
@@ -2029,10 +2220,11 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         width={150}
                         offsetX={75}
                         y={nodeSize / 2 + 8}
-                        shadowColor="black"
-                        shadowBlur={2}
-                        shadowOffset={{x: 1, y: 1}}
-                        shadowOpacity={1}
+                        shadowColor={!isEcoActive ? "black" : undefined}
+                        shadowBlur={!isEcoActive ? 2 : undefined}
+                        shadowOffset={!isEcoActive ? {x: 1, y: 1} : undefined}
+                        shadowOpacity={!isEcoActive ? 1 : undefined}
+                        listening={false}
                       />
                     );
                   })()}
@@ -2042,7 +2234,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     const qDeps = Array.isArray(q.dependencies)
                       ? q.dependencies.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d))
                       : (typeof q.dependencies === 'string' ? [q.dependencies] : []);
-                    const externalDepsCount = qDeps.filter((depId: string) => !quests.some((other: any) => other && other.id === depId)).length;
+                    const externalDepsCount = qDeps.filter((depId: string) => !questMap.has(depId)).length;
 
                     if (externalDepsCount > 0 && !isPlayerMode) {
                       return (
