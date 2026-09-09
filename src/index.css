@@ -2276,3 +2276,12 @@ input::-webkit-calendar-picker-indicator:hover {
 
 
 
+
+
+/* Picker Modals (Highest Z-Index Layer) */
+.modal-overlay-picker {
+  z-index: 100200 !important;
+}
+.modal-overlay-picker .modal-content {
+  z-index: 100201 !important;
+}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Image as ImageIcon, Layers, Box, Sparkles } from 'lucide-react';
 
 interface TexturePickerModalProps {
@@ -167,9 +168,9 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
     onClose();
   };
 
-  return (
+  return createPortal(
     <div 
-      className="modal-backdrop" 
+      className="modal-backdrop modal-overlay-picker" 
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -179,13 +180,13 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
         bottom: 0,
         width: '100vw',
         height: '100vh',
-        backgroundColor: 'rgba(10, 12, 16, 0.82)',
+        backgroundColor: 'rgba(10, 12, 16, 0.85)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 99999
+        zIndex: 100200
       }}
     >
       <div 
@@ -413,6 +414,7 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

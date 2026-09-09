@@ -57,17 +57,18 @@ export const RewardTableModal: React.FC<RewardTableModalProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
-
   const currentTable = tables.find(t => t.id === selectedTableId) || tables[0];
 
-  // Cálculo de pesos y probabilidades
+  // Cálculo incondicional de pesos y probabilidades (cumpliendo reglas de hooks de React)
   const totalWeight = useMemo(() => {
-    if (!currentTable) return 0;
+    if (!currentTable || !Array.isArray(currentTable.rewards)) return 0;
     const rewardsWeight = currentTable.rewards.reduce((acc, r) => acc + (Number(r.weight) || 0), 0);
     const emptyWeight = Number(currentTable.empty_weight) || 0;
-    return rewardsWeight + emptyWeight;
+    const sum = rewardsWeight + emptyWeight;
+    return isNaN(sum) ? 0 : sum;
   }, [currentTable]);
+
+  if (!isOpen) return null;
 
   const updateCurrentTable = (updates: Partial<RewardTable>) => {
     if (!currentTable) return;

@@ -4734,16 +4734,6 @@ function App() {
       </div>
     )}
 
-    {texturePicker && texturePicker.isOpen && (
-      <TexturePickerModal
-        isOpen={texturePicker.isOpen}
-        onClose={() => setTexturePicker(null)}
-        title={texturePicker.title}
-        targetType={texturePicker.targetType}
-        onSelect={texturePicker.onSelect}
-      />
-    )}
-
     {isRewardTableModalOpen && (
       <RewardTableModal
         isOpen={isRewardTableModalOpen}
@@ -4825,6 +4815,16 @@ function App() {
         />
       );
     })()}
+
+    {texturePicker && texturePicker.isOpen && (
+      <TexturePickerModal
+        isOpen={texturePicker.isOpen}
+        onClose={() => setTexturePicker(null)}
+        title={texturePicker.title}
+        targetType={texturePicker.targetType}
+        onSelect={texturePicker.onSelect}
+      />
+    )}
 
     {contextMenu.visible && (
       <div 
