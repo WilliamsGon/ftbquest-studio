@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   X, Plus, Trash2, Copy, Download, Upload, Search, 
-  Sparkles, Gift, Package, Layers, Check, AlertCircle 
+  Sparkles, Gift, Package, Layers, Check, AlertCircle, Tag, Terminal, Zap 
 } from 'lucide-react';
 import type { RewardTable, RewardTableEntry } from '../types/rewardTable';
 import { rewardTableToSNBT, snbtToRewardTable } from '../types/rewardTable';
+import { QuestItemThumbnail } from '../utils/textureHelper';
 
 interface RewardTableModalProps {
   isOpen: boolean;
@@ -336,8 +337,21 @@ export const RewardTableModal: React.FC<RewardTableModalProps> = ({
                     }}
                     className="reward-table-list-item"
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isSelected ? '#ffffff' : 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '6px',
+                        background: 'rgba(0,0,0,0.35)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <QuestItemThumbnail icon={t.icon || 'minecraft:chest'} size={22} altText={t.title} />
+                      </div>
+                      <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600, color: isSelected ? '#ffffff' : 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         {t.title || 'Sin Título'}
                       </span>
                       <div style={{ display: 'flex', gap: '4px' }}>
@@ -445,10 +459,29 @@ export const RewardTableModal: React.FC<RewardTableModalProps> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
                   <div className="input-group" style={{ margin: 0 }}>
                     <label>Ícono (Item / Textura)</label>
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <div 
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '6px',
+                          background: 'rgba(0,0,0,0.4)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          cursor: 'pointer'
+                        }}
+                        title="Click para cambiar icono"
+                        onClick={() => onOpenTexturePicker('icon', (val) => updateCurrentTable({ icon: val }))}
+                      >
+                        <QuestItemThumbnail icon={currentTable.icon || 'minecraft:chest'} size={24} altText="Icono" />
+                      </div>
                       <input
                         type="text"
                         className="input-field"
+                        style={{ flex: 1 }}
                         value={typeof currentTable.icon === 'string' ? currentTable.icon : (currentTable.icon?.id || '')}
                         onChange={(e) => updateCurrentTable({ icon: e.target.value })}
                         placeholder="minecraft:chest"
@@ -616,14 +649,49 @@ export const RewardTableModal: React.FC<RewardTableModalProps> = ({
                             </select>
                           </div>
 
-                          {/* Valor según tipo */}
-                          <div style={{ flex: 1 }}>
+                          {/* Valor según tipo con Miniatura Visual */}
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* Slot Gráfico del Ítem o Recurso */}
+                            <div
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '6px',
+                                background: 'rgba(0,0,0,0.45)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                cursor: reward.type === 'item' ? 'pointer' : 'default',
+                                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.6)'
+                              }}
+                              title={reward.type === 'item' ? 'Click para explorar textura de este ítem' : (reward.type || 'Recompensa')}
+                              onClick={() => {
+                                if (reward.type === 'item') {
+                                  onOpenTexturePicker('icon', (val) => updateRewardEntry(idx, { item: val }));
+                                }
+                              }}
+                            >
+                              {reward.type === 'item' ? (
+                                (typeof reward.item === 'string' ? reward.item : (reward.item?.id || '')).startsWith('#') ? (
+                                  <Tag size={16} style={{ color: '#10b981' }} />
+                                ) : (
+                                  <QuestItemThumbnail icon={reward.item} size={24} altText="Item" />
+                                )
+                              ) : reward.type === 'xp' || reward.type === 'xp_levels' ? (
+                                <Zap size={16} style={{ color: '#10b981' }} />
+                              ) : (
+                                <Terminal size={16} style={{ color: '#38bdf8' }} />
+                              )}
+                            </div>
+
                             {reward.type === 'item' ? (
-                              <div style={{ display: 'flex', gap: '4px' }}>
+                              <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
                                 <input
                                   type="text"
                                   className="input-field"
-                                  style={{ fontSize: '0.78rem', height: '30px' }}
+                                  style={{ fontSize: '0.78rem', height: '30px', flex: 1 }}
                                   value={typeof reward.item === 'string' ? reward.item : (reward.item?.id || '')}
                                   placeholder="minecraft:diamond"
                                   onChange={(e) => updateRewardEntry(idx, { item: e.target.value })}
