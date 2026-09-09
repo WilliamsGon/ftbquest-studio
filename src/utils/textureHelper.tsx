@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Package } from 'lucide-react';
+import { isBlockTexture, IsometricBlockThumbnail } from './isometricBlockRenderer';
 
 export function getItemTextureCandidateUrls(icon: any): string[] {
   if (!icon) return [];
@@ -45,7 +46,8 @@ export const QuestItemThumbnail: React.FC<{
   icon: any;
   size?: number;
   altText?: string;
-}> = ({ icon, size = 32, altText = 'item' }) => {
+  enableIsometric?: boolean;
+}> = ({ icon, size = 32, altText = 'item', enableIsometric = true }) => {
   const [candidateIdx, setCandidateIdx] = useState(0);
   const urls = getItemTextureCandidateUrls(icon);
 
@@ -70,9 +72,27 @@ export const QuestItemThumbnail: React.FC<{
     );
   }
 
+  const currentUrl = urls[candidateIdx];
+  const isBlock = enableIsometric && isBlockTexture(currentUrl);
+
+  if (isBlock) {
+    return (
+      <IsometricBlockThumbnail
+        src={currentUrl}
+        size={size}
+        altText={altText}
+        onError={() => setCandidateIdx((prev) => prev + 1)}
+        style={{
+          borderRadius: '3px',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
   return (
     <img
-      src={urls[candidateIdx]}
+      src={currentUrl}
       alt={altText}
       style={{
         width: `${size}px`,

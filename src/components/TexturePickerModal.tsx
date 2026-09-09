@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, Image as ImageIcon, Layers, Box, Sparkles } from 'lucide-react';
+import { isBlockTexture, IsometricBlockThumbnail } from '../utils/isometricBlockRenderer';
 
 interface TexturePickerModalProps {
   isOpen: boolean;
@@ -285,7 +286,7 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
             style={{ padding: '5px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
             onClick={() => setSelectedCategory('block')}
           >
-            <Box size={14} /> Bloques
+            <Box size={14} /> Bloques (3D)
           </button>
 
           <button
@@ -358,20 +359,28 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
                         background: 'rgba(0,0,0,0.3)',
                         borderRadius: '6px'
                       }}>
-                        <img
-                          src={imgUrl}
-                          alt={nameClean}
-                          style={{
-                            maxWidth: '36px',
-                            maxHeight: '36px',
-                            objectFit: 'contain',
-                            imageRendering: 'pixelated'
-                          }}
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        {isBlockTexture(texPath) ? (
+                          <IsometricBlockThumbnail
+                            src={imgUrl}
+                            size={36}
+                            altText={nameClean}
+                          />
+                        ) : (
+                          <img
+                            src={imgUrl}
+                            alt={nameClean}
+                            style={{
+                              maxWidth: '36px',
+                              maxHeight: '36px',
+                              objectFit: 'contain',
+                              imageRendering: 'pixelated'
+                            }}
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        )}
                       </div>
                       <div style={{ textAlign: 'center', width: '100%', overflow: 'hidden' }}>
                         <div style={{
@@ -389,9 +398,29 @@ export const TexturePickerModal: React.FC<TexturePickerModalProps> = ({
                           color: 'var(--text-secondary)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          textOverflow: 'ellipsis',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px'
                         }}>
-                          {ns}
+                          <span>{ns}</span>
+                          {isBlockTexture(texPath) && (
+                            <span 
+                              style={{ 
+                                fontSize: '0.55rem', 
+                                padding: '0 3px', 
+                                borderRadius: '3px', 
+                                background: 'rgba(166, 227, 161, 0.15)', 
+                                color: '#a6e3a1',
+                                border: '1px solid rgba(166, 227, 161, 0.3)',
+                                fontWeight: 700
+                              }}
+                              title="Renderizado en cubo 3D isométrico"
+                            >
+                              3D
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

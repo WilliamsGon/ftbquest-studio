@@ -8,6 +8,7 @@ import { Minimap } from './Minimap';
 import { QuestSearchBar, type SearchMatch, type ReplaceFieldsConfig } from './QuestSearchBar';
 import { computeSmartSnapping, type AlignmentGuide } from '../utils/smartSnapping';
 import { stripMinecraftFormatting, getFirstMinecraftColor } from '../utils/minecraftText';
+import { isBlockTexture, getIsometricBlockCanvas } from '../utils/isometricBlockRenderer';
 
 interface CanvasProps {
   quests: any[];
@@ -137,20 +138,42 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
   const currentUrl = candidates[candidateIdx] || '';
   const [image, status] = useImage(currentUrl);
 
+  const isBlock = useMemo(() => isBlockTexture(currentUrl), [currentUrl]);
+  const [isoCanvas, setIsoCanvas] = useState<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (status === 'loaded' && isBlock && currentUrl) {
+      let active = true;
+      const targetSize = Math.max(32, Math.round(Math.max(width, height) * 1.5));
+      getIsometricBlockCanvas(currentUrl, targetSize).then((c) => {
+        if (active && c) {
+          setIsoCanvas(c);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    } else {
+      setIsoCanvas(null);
+    }
+  }, [status, isBlock, currentUrl, width, height]);
+
   useEffect(() => {
     if (status === 'failed' && candidateIdx < candidates.length - 1) {
       setCandidateIdx(prev => prev + 1);
     }
   }, [status, candidateIdx, candidates]);
 
+  const finalImage = (isBlock && isoCanvas) ? isoCanvas : image;
+
   // Cachear para que los filtros tengan efecto
   useEffect(() => {
     if (status === 'loaded' && imageRef.current && color !== undefined && color !== 16777215) {
       imageRef.current.cache();
     }
-  }, [image, status, color, width, height]);
+  }, [finalImage, status, color, width, height]);
 
-  if (status === 'loaded' && image) {
+  if (status === 'loaded' && finalImage) {
     const hasColorFilter = color !== undefined && color !== 16777215;
     let r = 255;
     let g = 255;
@@ -165,7 +188,7 @@ const FtbTexture: React.FC<{ icon: any, width: number, height: number, color?: n
     return (
       <KonvaImage
         ref={imageRef}
-        image={image}
+        image={finalImage}
         width={width}
         height={height}
         offsetX={width / 2}

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { RewardTable } from '../types/rewardTable';
 import { ItemTagPickerModal } from './ItemTagPickerModal';
+import { QuestItemThumbnail } from '../utils/textureHelper';
 import { isItemTag } from '../utils/itemTagCatalogs';
 import { 
   MINECRAFT_ENTITIES, 
@@ -38,71 +39,7 @@ function getDValue(val: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-function getItemTextureCandidateUrls(icon: any): string[] {
-  if (!icon) return [];
-  let iconStr = '';
-  if (typeof icon === 'string') {
-    iconStr = icon;
-  } else if (icon && typeof icon === 'object' && icon.id) {
-    iconStr = icon.id;
-  }
-  if (!iconStr) return [];
-
-  let namespace = 'minecraft';
-  let path = 'stone';
-  const parts = iconStr.split(':');
-  if (parts.length === 2) {
-    namespace = parts[0];
-    path = parts[1];
-  } else if (parts.length === 1) {
-    path = parts[0];
-  }
-
-  const pathClean = path.endsWith('.png') ? path.slice(0, -4) : path;
-  const baseUrl = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-  const cleanBase = baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`;
-
-  const urls: string[] = [];
-  if (path.includes('textures/')) {
-    const stripped = pathClean.replace(/^textures\//, '');
-    urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
-    urls.push(`${cleanBase}textures/${namespace}/${path}`);
-    urls.push(`${cleanBase}textures/${namespace}/${stripped}.png`);
-    urls.push(`${cleanBase}textures/${namespace}/${stripped}`);
-  } else {
-    urls.push(`${cleanBase}textures/${namespace}/textures/${pathClean}.png`);
-    urls.push(`${cleanBase}textures/${namespace}/item/${pathClean}.png`);
-    urls.push(`${cleanBase}textures/${namespace}/block/${pathClean}.png`);
-    urls.push(`${cleanBase}textures/${namespace}/${pathClean}.png`);
-  }
-  return urls;
-}
-
 const ItemThumbnail: React.FC<{ icon: any; altText?: string }> = ({ icon, altText = 'item' }) => {
-  const [candidateIdx, setCandidateIdx] = useState(0);
-  const urls = getItemTextureCandidateUrls(icon);
-
-  if (urls.length === 0 || candidateIdx >= urls.length) {
-    return (
-      <div 
-        style={{
-          width: '34px',
-          height: '34px',
-          borderRadius: '6px',
-          background: 'rgba(0,0,0,0.3)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-secondary)',
-          fontSize: '0.85rem'
-        }}
-      >
-        📦
-      </div>
-    );
-  }
-
   return (
     <div 
       style={{
@@ -114,21 +51,11 @@ const ItemThumbnail: React.FC<{ icon: any; altText?: string }> = ({ icon, altTex
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '3px',
+        padding: '2px',
         overflow: 'hidden'
       }}
     >
-      <img
-        src={urls[candidateIdx]}
-        alt={altText}
-        style={{
-          maxWidth: '100%',
-          maxHeight: '100%',
-          imageRendering: 'pixelated',
-          objectFit: 'contain'
-        }}
-        onError={() => setCandidateIdx(candidateIdx + 1)}
-      />
+      <QuestItemThumbnail icon={icon} size={28} altText={altText} />
     </div>
   );
 };
