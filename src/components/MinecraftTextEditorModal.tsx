@@ -3,21 +3,24 @@
  *
  * Diálogo modal avanzado para edición de Títulos, Subtítulos y Descripciones de FTB Quests.
  * Ofrece:
+ * - Área de texto multilínea (Textarea) completa para todos los campos (soporte total de Enter y párrafos).
  * - Paleta completa de colores de Minecraft (&0-&f) y selector Hexadecimal (&#RRGGBB).
  * - Botones de formato rápido (&l Negrita, &o Cursiva, &n Subrayado, &m Tachado, &k Ofuscado, &r Reset).
- * - Inserción inteligente envolviendo la selección de texto activa.
- * - Vista previa en vivo idéntica a Minecraft: soporte de temas "Pergamino de Misiones" y "GUI Oscura FTB".
- * - Soporte para strings simples o arrays de líneas de descripción (formato nativo FTB Quests).
+ * - Botón de inserción rápida de salto de línea / párrafo (↵ Enter).
+ * - Inserción inteligente envolviendo la selección de texto activa con el cursor.
+ * - Vista previa en vivo idéntica a Minecraft: soporte de temas "Pergamino de Misiones (Libro)" y "GUI Oscura FTB".
+ * - Soporte nativo de saltos de línea tanto para strings simples como para arrays de descripción de FTB Quests.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   X, Check, Type, Sparkles, BookOpen, Monitor, Eraser, 
-  Palette, Bold, Italic, Underline, Strikethrough, RotateCcw
+  Palette, Bold, Italic, Underline, Strikethrough, RotateCcw,
+  CornerDownLeft
 } from 'lucide-react';
 import { 
-  MINECRAFT_COLORS,  
+  MINECRAFT_COLORS, 
   parseMinecraftText, 
   stripMinecraftFormatting 
 } from '../utils/minecraftText';
@@ -35,7 +38,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
   isOpen,
   fieldTitle,
   initialValue,
-  isMultiline = false,
+  isMultiline = true,
   onSave,
   onClose,
 }) => {
@@ -43,9 +46,8 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
   const [previewTheme, setPreviewTheme] = useState<'book' | 'dark'>('book');
   const [customHex, setCustomHex] = useState<string>('#FFAA00');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Inicializar texto
+  // Inicializar texto normalizando tanto arrays de líneas de FTB como strings
   useEffect(() => {
     if (Array.isArray(initialValue)) {
       setText(initialValue.join('\n'));
@@ -58,7 +60,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
 
   // Insertar código de formato envolviendo la selección o en la posición del cursor
   const insertFormatting = (prefix: string, suffix: string = '&r') => {
-    const el = isMultiline ? textareaRef.current : inputRef.current;
+    const el = textareaRef.current;
     if (!el) {
       setText((prev) => prev + prefix);
       return;
@@ -93,7 +95,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
   };
 
   const handleClearFormatting = () => {
-    const el = isMultiline ? textareaRef.current : inputRef.current;
+    const el = textareaRef.current;
     if (!el) {
       setText(stripMinecraftFormatting(text));
       return;
@@ -144,9 +146,9 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
     >
       <div
         style={{
-          width: '940px',
+          width: '980px',
           maxWidth: '96vw',
-          maxHeight: '90vh',
+          maxHeight: '92vh',
           background: 'var(--surface-color, #181825)',
           borderRadius: '12px',
           border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -174,7 +176,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
                 {fieldTitle}
               </h2>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #a6adc8)' }}>
-                Editor enriquecido con códigos de formato de Minecraft (&) y previsualización en vivo
+                Editor de texto enriquecido • Soporte completo de múltiples líneas, párrafos y códigos de formato (&)
               </span>
             </div>
           </div>
@@ -262,8 +264,8 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
             </div>
           </div>
 
-          {/* Formatos (Negrita, Cursiva, etc.) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* Formatos (Negrita, Cursiva, Salto de Línea, etc.) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
             <button
               className="btn btn-secondary"
               onClick={() => insertFormatting('&l')}
@@ -312,6 +314,17 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
             >
               <RotateCcw size={13} /> &r
             </button>
+
+            {/* Botón explícito para insertar salto de línea */}
+            <button
+              className="btn btn-secondary"
+              onClick={() => insertFormatting('\n', '')}
+              title="Insertar Salto de Línea / Nuevo Renglón"
+              style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px', color: '#89b4fa' }}
+            >
+              <CornerDownLeft size={13} /> Enter
+            </button>
+
             <button
               className="btn btn-secondary"
               onClick={handleClearFormatting}
@@ -324,8 +337,8 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
         </div>
 
         {/* Cuerpo del Editor: Split Editor Izquierda / Preview Derecha */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1, minHeight: '380px', overflow: 'hidden' }}>
-          {/* Panel Izquierdo: Campo de Entrada */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1, minHeight: '420px', overflow: 'hidden' }}>
+          {/* Panel Izquierdo: Campo de Entrada Multilínea (Textarea para todos los campos) */}
           <div
             style={{
               padding: '16px 20px',
@@ -343,52 +356,32 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
               </span>
             </div>
 
-            {isMultiline ? (
-              <textarea
-                ref={textareaRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Escribe aquí la descripción de la misión... Puedes usar códigos &a, &b, &l..."
-                style={{
-                  flex: 1,
-                  width: '100%',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  color: '#f5e0dc',
-                  fontSize: '0.9rem',
-                  fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                  lineHeight: '1.5',
-                  resize: 'none',
-                  outline: 'none',
-                }}
-                autoFocus
-              />
-            ) : (
-              <input
-                ref={inputRef}
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Ejemplo: &6&lCapítulo 1: &aEl Comienzo..."
-                style={{
-                  width: '100%',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  color: '#f5e0dc',
-                  fontSize: '0.95rem',
-                  fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                  outline: 'none',
-                }}
-                autoFocus
-              />
-            )}
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Escribe aquí tu texto... Puedes presionar Enter libremente para saltos de línea y párrafos. Usa códigos &a, &6, &l..."
+              style={{
+                flex: 1,
+                width: '100%',
+                minHeight: '320px',
+                background: 'rgba(0, 0, 0, 0.35)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                padding: '14px',
+                color: '#f5e0dc',
+                fontSize: '0.92rem',
+                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                lineHeight: '1.6',
+                resize: 'none',
+                outline: 'none',
+                whiteSpace: 'pre',
+              }}
+              autoFocus
+            />
 
             <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #a6adc8)', lineHeight: '1.4' }}>
-              💡 <strong>Tip:</strong> Selecciona cualquier fragmento de texto con el cursor y haz clic en un color o formato para aplicarlo directamente.
+              💡 <strong>Saltos de línea en FTB Quests:</strong> Presiona <kbd style={{ background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '3px' }}>Enter</kbd> para un renglón nuevo, o dos veces para un salto de párrafo. En FTB Quests cada renglón se guarda como una línea de la página del libro.
             </div>
           </div>
 
@@ -411,9 +404,9 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
                   className={`btn ${previewTheme === 'book' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setPreviewTheme('book')}
                   style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  title="Estilo pergamino de libro de misiones"
+                  title="Estilo pergamino de libro de misiones de Minecraft"
                 >
-                  <BookOpen size={12} /> Libro
+                  <BookOpen size={12} /> Pergamino (Libro)
                 </button>
                 <button
                   className={`btn ${previewTheme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
@@ -421,7 +414,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
                   style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                   title="Estilo GUI oscura de FTB Quests"
                 >
-                  <Monitor size={12} /> Oscuro
+                  <Monitor size={12} /> Oscuro (FTB)
                 </button>
               </div>
             </div>
@@ -430,9 +423,9 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
             <div
               style={{
                 flex: 1,
-                minHeight: '260px',
+                minHeight: '320px',
                 borderRadius: '8px',
-                padding: '18px',
+                padding: '20px',
                 border: previewTheme === 'book' ? '2px solid #8b7355' : '1px solid rgba(255,255,255,0.1)',
                 background: previewTheme === 'book' 
                   ? 'linear-gradient(135deg, #f4e8c1 0%, #e6d3a3 100%)' 
@@ -443,7 +436,7 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
                   : 'inset 0 0 15px rgba(0, 0, 0, 0.5)',
                 fontFamily: '"Minecraft", Consolas, monospace',
                 fontSize: '1rem',
-                lineHeight: '1.6',
+                lineHeight: '1.65',
                 overflowY: 'auto',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
@@ -455,8 +448,8 @@ export const MinecraftTextEditorModal: React.FC<MinecraftTextEditorModalProps> =
                 </span>
               ) : (
                 lines.map((line, idx) => (
-                  <div key={idx} style={{ minHeight: '1.4em' }}>
-                    {parseMinecraftText(line, previewTheme === 'book' ? '#2c2214' : '#cdd6f4')}
+                  <div key={idx} style={{ minHeight: '1.4em', marginBottom: line === '' ? '0.6em' : '0' }}>
+                    {line === '' ? '\u00A0' : parseMinecraftText(line, previewTheme === 'book' ? '#2c2214' : '#cdd6f4')}
                   </div>
                 ))
               )}
