@@ -15,7 +15,7 @@ import { normalizeQuestId } from './questSimulatorEngine';
  */
 export function getCompleteQuestCommand(questId: string, playerTarget: string = '@p'): string {
   const qId = normalizeQuestId(questId);
-  return `/ftbquests change_progress complete ${playerTarget} ${qId}`;
+  return `/ftbquests change_progress ${playerTarget} complete ${qId}`;
 }
 
 /**
@@ -23,7 +23,7 @@ export function getCompleteQuestCommand(questId: string, playerTarget: string = 
  */
 export function getResetQuestCommand(questId: string, playerTarget: string = '@p'): string {
   const qId = normalizeQuestId(questId);
-  return `/ftbquests change_progress reset ${playerTarget} ${qId}`;
+  return `/ftbquests change_progress ${playerTarget} reset ${qId}`;
 }
 
 /**
@@ -82,7 +82,7 @@ ServerEvents.commandRegistry(event => {
         const questIds = ${jsonIds};
 
         questIds.forEach(id => {
-          player.server.runCommandSilent(\`ftbquests change_progress complete \${player.username} \${id}\`);
+          player.server.runCommandSilent(\`ftbquests change_progress \${player.username} complete \${id}\`);
         });
 
         player.tell(Text.green('✔ ¡Capítulo "${chapterTitle}" completado con éxito! (' + questIds.length + ' misiones)'));
@@ -101,7 +101,7 @@ ServerEvents.commandRegistry(event => {
         const questIds = ${jsonIds};
 
         questIds.forEach(id => {
-          player.server.runCommandSilent(\`ftbquests change_progress reset \${player.username} \${id}\`);
+          player.server.runCommandSilent(\`ftbquests change_progress \${player.username} reset \${id}\`);
         });
 
         player.tell(Text.yellow('↺ ¡Capítulo "${chapterTitle}" reiniciado a cero!'));
