@@ -195,12 +195,16 @@ export const QuestShape: React.FC<QuestShapeProps> = ({
   };
 
   return (
-    <Group listening={false}>
+    <Group>
       {/* Marco de fondo base */}
       {renderShapeElement(0, false)}
 
       {/* Contorno de selección cuando está seleccionado */}
-      {isSelected && renderShapeElement(3 / stageScale + 2, true)}
+      {isSelected && (
+        <Group listening={false}>
+          {renderShapeElement(3 / stageScale + 2, true)}
+        </Group>
+      )}
     </Group>
   );
 };

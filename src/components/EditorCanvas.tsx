@@ -1432,6 +1432,18 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                   y={currentY}
                   rotation={rot}
                   draggable={!isLocked}
+                  onMouseEnter={(e) => {
+                    const stage = e.target.getStage();
+                    if (stage && activeTool === 'select') {
+                      stage.container().style.cursor = 'move';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    const stage = e.target.getStage();
+                    if (stage && activeTool === 'select') {
+                      stage.container().style.cursor = 'default';
+                    }
+                  }}
                   onClick={(e) => {
                     e.cancelBubble = true;
                     // Selección individual o múltiple con Shift
@@ -1454,8 +1466,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragStart={(e) => {
+                    const node = e.currentTarget;
                     if (isLocked) {
-                      e.target.stopDrag();
+                      node.stopDrag();
                       return;
                     }
                     const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
@@ -1463,10 +1476,11 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
                     }
                     setDraggingId(idx);
-                    setDragStartPos({ x: e.target.x(), y: e.target.y() });
+                    setDragStartPos({ x: node.x(), y: node.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
                   onDragMove={(e) => {
+                    const node = e.currentTarget;
                     const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
                     if (isImgSelected && selection.items.length > 1) {
                       // Buscar si hay misiones seleccionadas
@@ -1479,8 +1493,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         const qOrigY = getDValue(anchorQuest.y) * SCALE_FACTOR;
                         
                         // Desplazamiento bruto
-                        const rawDeltaX = e.target.x() - dragStartPos!.x;
-                        const rawDeltaY = e.target.y() - dragStartPos!.y;
+                        const rawDeltaX = node.x() - dragStartPos!.x;
+                        const rawDeltaY = node.y() - dragStartPos!.y;
                         
                         // Posición tentativa de la misión
                         const qTentX = qOrigX + rawDeltaX;
@@ -1492,51 +1506,52 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         const realDeltaX = qSnappedX - qOrigX;
                         const realDeltaY = qSnappedY - qOrigY;
                         
-                        e.target.x(dragStartPos!.x + realDeltaX);
-                        e.target.y(dragStartPos!.y + realDeltaY);
+                        node.x(dragStartPos!.x + realDeltaX);
+                        node.y(dragStartPos!.y + realDeltaY);
                         setDragOffset({ x: realDeltaX, y: realDeltaY });
                       } else {
                         // Comportamiento normal con o sin snap
                         if (snapToGrid) {
                           const snapPixels = 0.5 * SCALE_FACTOR;
-                          const x = e.target.x();
-                          const y = e.target.y();
+                          const x = node.x();
+                          const y = node.y();
                           const snappedX = Math.round(x / snapPixels) * snapPixels;
                           const snappedY = Math.round(y / snapPixels) * snapPixels;
-                          e.target.x(snappedX);
-                          e.target.y(snappedY);
+                          node.x(snappedX);
+                          node.y(snappedY);
                           setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
                         } else {
-                          setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
+                          setDragOffset({ x: node.x() - dragStartPos!.x, y: node.y() - dragStartPos!.y });
                         }
                       }
                     } else {
                       // Arrastre individual sin selección múltiple
                       if (snapToGrid) {
                         const snapPixels = 0.5 * SCALE_FACTOR;
-                        const x = e.target.x();
-                        const y = e.target.y();
+                        const x = node.x();
+                        const y = node.y();
                         const snappedX = Math.round(x / snapPixels) * snapPixels;
                         const snappedY = Math.round(y / snapPixels) * snapPixels;
-                        e.target.x(snappedX);
-                        e.target.y(snappedY);
+                        node.x(snappedX);
+                        node.y(snappedY);
                       }
                       if (dragStartPos) {
-                        const deltaX = e.target.x() - dragStartPos.x;
-                        const deltaY = e.target.y() - dragStartPos.y;
+                        const deltaX = node.x() - dragStartPos.x;
+                        const deltaY = node.y() - dragStartPos.y;
                         setDragOffset({ x: deltaX, y: deltaY });
                       }
                     }
                   }}
                   onDragEnd={(e) => {
+                    const node = e.currentTarget;
                     if (dragStartPos) {
                       const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
                       if (isImgSelected && selection.items.length > 1) {
                         // Buscar si hay misiones seleccionadas
                         const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
                         
-                        let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                        let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+                        let deltaX = (node.x() - dragStartPos.x) / SCALE_FACTOR;
+                        let deltaY = (node.y() - dragStartPos.y) / SCALE_FACTOR;
 
                         if (anchorQuest) {
                           // Si hay misión ancla, ella manda
@@ -1649,8 +1664,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         }
                       } else {
                         // Arrastre individual de imagen
-                        let newX = e.target.x() / SCALE_FACTOR;
-                        let newY = e.target.y() / SCALE_FACTOR;
+                        let newX = node.x() / SCALE_FACTOR;
+                        let newY = node.y() / SCALE_FACTOR;
                         if (snapToGrid) {
                           newX = Math.round(newX / 0.5) * 0.5;
                           newY = Math.round(newY / 0.5) * 0.5;
@@ -1663,6 +1678,16 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     setDragOffset({ x: 0, y: 0 });
                   }}
                 >
+                  {/* Área de impacto para garantizar captura de clics y arrastre al 100% */}
+                  <Rect
+                    width={w}
+                    height={h}
+                    offsetX={w / 2}
+                    offsetY={h / 2}
+                    fill="rgba(0, 0, 0, 0.001)"
+                    listening={true}
+                  />
+
                   {/* Intentar renderizar la textura */}
                   <FtbTexture 
                     icon={img.image} 
@@ -1911,8 +1936,20 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       : (hasSearchFilter && !isSearchMatch ? 0.28 : 1.0)
                   }
                   draggable={!isLocked && !isPlayerMode}
-                  onMouseEnter={() => setHoveredQuestId(q.id)}
-                  onMouseLeave={() => setHoveredQuestId(prev => prev === q.id ? null : prev)}
+                  onMouseEnter={(e) => {
+                    setHoveredQuestId(q.id);
+                    const stage = e.target.getStage();
+                    if (stage && activeTool === 'select' && !isPlayerMode) {
+                      stage.container().style.cursor = 'move';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    setHoveredQuestId(prev => prev === q.id ? null : prev);
+                    const stage = e.target.getStage();
+                    if (stage && activeTool === 'select') {
+                      stage.container().style.cursor = 'default';
+                    }
+                  }}
                   onMouseUp={(e) => {
                     if (isPlayerMode) return;
                     if (wireDrag && wireDrag.sourceQuestId !== q.id) {
@@ -1955,8 +1992,9 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                     }
                   }}
                   onDragStart={(e) => {
+                    const node = e.currentTarget;
                     if (isLocked || isPlayerMode) {
-                      e.target.stopDrag();
+                      node.stopDrag();
                       return;
                     }
                     const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
@@ -1964,21 +2002,22 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       setSelection({ type: 'quest', ids: [q.id], items: [{ type: 'quest', id: q.id }] });
                     }
                     setDraggingId(q.id);
-                    setDragStartPos({ x: e.target.x(), y: e.target.y() });
+                    setDragStartPos({ x: node.x(), y: node.y() });
                     setDragOffset({ x: 0, y: 0 });
                   }}
                   onDragMove={(e) => {
+                    const node = e.currentTarget;
                     const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                     if (isQSelected && selection.items.length > 1) {
                       // Esta misión es la que se arrastra, actúa como el ancla del grupo
                       if (snapToGrid) {
                         const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
-                        const x = e.target.x();
-                        const y = e.target.y();
+                        const x = node.x();
+                        const y = node.y();
                         const snappedX = Math.round(x / snapPixels) * snapPixels;
                         const snappedY = Math.round(y / snapPixels) * snapPixels;
-                        e.target.x(snappedX);
-                        e.target.y(snappedY);
+                        node.x(snappedX);
+                        node.y(snappedY);
                       }
 
                       // Guías magnéticas inteligentes en multi-arrastre
@@ -2004,15 +2043,15 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                           });
 
                         const snapRes = computeSmartSnapping(
-                          { x: e.target.x(), y: e.target.y() },
+                          { x: node.x(), y: node.y() },
                           { width: nodeSize, height: nodeSize },
                           staticRects,
                           7 / stageScale
                         );
 
                         if (snapRes.guides.length > 0) {
-                          e.target.x(snapRes.snappedX);
-                          e.target.y(snapRes.snappedY);
+                          node.x(snapRes.snappedX);
+                          node.y(snapRes.snappedY);
                           setActiveGuides(snapRes.guides);
                         } else {
                           setActiveGuides([]);
@@ -2021,17 +2060,17 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         setActiveGuides([]);
                       }
 
-                      setDragOffset({ x: e.target.x() - dragStartPos!.x, y: e.target.y() - dragStartPos!.y });
+                      setDragOffset({ x: node.x() - dragStartPos!.x, y: node.y() - dragStartPos!.y });
                     } else {
                       // Comportamiento individual
                       if (snapToGrid) {
                         const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
-                        const x = e.target.x();
-                        const y = e.target.y();
+                        const x = node.x();
+                        const y = node.y();
                         const snappedX = Math.round(x / snapPixels) * snapPixels;
                         const snappedY = Math.round(y / snapPixels) * snapPixels;
-                        e.target.x(snappedX);
-                        e.target.y(snappedY);
+                        node.x(snappedX);
+                        node.y(snappedY);
                       }
 
                       // Guías magnéticas inteligentes en arrastre individual
@@ -2056,15 +2095,15 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                           });
 
                         const snapRes = computeSmartSnapping(
-                          { x: e.target.x(), y: e.target.y() },
+                          { x: node.x(), y: node.y() },
                           { width: nodeSize, height: nodeSize },
                           staticRects,
                           7 / stageScale
                         );
 
                         if (snapRes.guides.length > 0) {
-                          e.target.x(snapRes.snappedX);
-                          e.target.y(snapRes.snappedY);
+                          node.x(snapRes.snappedX);
+                          node.y(snapRes.snappedY);
                           setActiveGuides(snapRes.guides);
                         } else {
                           setActiveGuides([]);
@@ -2074,20 +2113,21 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       }
 
                       if (dragStartPos) {
-                        const deltaX = e.target.x() - dragStartPos.x;
-                        const deltaY = e.target.y() - dragStartPos.y;
+                        const deltaX = node.x() - dragStartPos.x;
+                        const deltaY = node.y() - dragStartPos.y;
                         setDragOffset({ x: deltaX, y: deltaY });
                       }
                     }
                   }}
                   onDragEnd={(e) => {
+                    const node = e.currentTarget;
                     setActiveGuides([]);
                     if (dragStartPos) {
                       const isQSelected = selection.items.some(item => item.type === 'quest' && item.id === q.id);
                       if (isQSelected && selection.items.length > 1) {
                         // Esta misión es la ancla del arrastre
-                        let deltaX = (e.target.x() - dragStartPos.x) / SCALE_FACTOR;
-                        let deltaY = (e.target.y() - dragStartPos.y) / SCALE_FACTOR;
+                        let deltaX = (node.x() - dragStartPos.x) / SCALE_FACTOR;
+                        let deltaY = (node.y() - dragStartPos.y) / SCALE_FACTOR;
 
                         if (snapToGrid) {
                           const snapStep = sizeVal / 2;
@@ -2134,8 +2174,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                         }
                       } else {
                         // Arrastre individual de misión
-                        let newX = e.target.x() / SCALE_FACTOR;
-                        let newY = e.target.y() / SCALE_FACTOR;
+                        let newX = node.x() / SCALE_FACTOR;
+                        let newY = node.y() / SCALE_FACTOR;
                         if (snapToGrid) {
                           const snapStep = sizeVal / 2;
                           newX = Math.round(newX / snapStep) * snapStep;
@@ -2185,6 +2225,13 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
                       </Group>
                     </>
                   )}
+
+                  {/* Área de impacto para garantizar la captura de clics y arrastres al 100% */}
+                  <Circle
+                    radius={Math.max(nodeSize / 2, 20)}
+                    fill="rgba(0, 0, 0, 0.001)"
+                    listening={true}
+                  />
 
                   {/* Marco de forma (Shape) y contorno de selección de FTB Quests */}
                   <QuestShape 
