@@ -66,6 +66,9 @@ Permite abrir varios capítulos a la vez, editarlos de forma visual (mapa) o tab
 - Exportar: capítulo actual, todos los capítulos, o un **ZIP** con la estructura  
   `config/ftbquests/quests/{chapters, reward_tables}/` más `chapter_groups.snbt`.
 
+### Guardar directo en la carpeta (Chrome y Edge)
+**📂 Abrir carpeta** enlaza la carpeta de quests (también acepta la instancia o `config/ftbquests`) y **💾 Guardar en carpeta** escribe en ella `chapters/`, `reward_tables/`, `data.snbt` y `chapter_groups.snbt` sin pasar por el ZIP. Pide confirmación, sobrescribe los archivos existentes y no borra nada. En otros navegadores se usa el selector de carpeta clásico y el ZIP.
+
 ### Persistencia
 Los capítulos viven solo en memoria hasta que los exportas. Se guardan en `localStorage`: reward tables, grupos de capítulos, prefabs anclados, ancho del panel lateral y estilo de líneas.
 
@@ -137,7 +140,7 @@ npm run preview   # previsualizar el build
     └── utils/
         ├── snbt.ts                # Parser y serializador SNBT propios
         ├── autoLayout.ts, smartSnapping.ts, graphValidation.ts
-        ├── blueprintEngine.ts, i18nManager.ts, zipExporter.ts
+        ├── blueprintEngine.ts, i18nManager.ts, zipExporter.ts, folderAccess.ts
         ├── modpackDoctor.ts, questAnalytics.ts, questSimulatorEngine.ts, commandGenerator.ts
         └── textureHelper.tsx, isometricBlockRenderer.tsx, minecraftText.tsx, minecraftCatalogs.ts, itemTagCatalogs.ts
 ```

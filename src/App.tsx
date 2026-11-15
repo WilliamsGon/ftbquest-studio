@@ -33,7 +33,8 @@ import { TranslationManagerModal } from './components/TranslationManagerModal';
 import type { TranslationEntry } from './types/i18n';
 import { applyI18nKeysToChapters } from './utils/i18nManager';
 import type { ChapterGroup } from './types/chapterGroup';
-import { exportModpackToZip } from './utils/zipExporter';
+import { exportModpackToZip, buildModpackFiles } from './utils/zipExporter';
+import { isFolderAccessSupported, pickQuestFolder, resolveQuestsDir, readQuestFolder, writeQuestFiles } from './utils/folderAccess';
 import { QuestBookSettingsModal } from './components/QuestBookSettingsModal';
 import { classifyQuestFiles, readQuestExtras } from './utils/questBook';
 import type { ClassifiedFile } from './utils/questBook';
@@ -1762,7 +1763,7 @@ function App() {
     showToast(`Exportando ${tabsRef.current.length} capítulos...`, 'success');
   };
 
-  const handleExportZip = async () => {
+  const collectExportOptions = () => {
     const allChapters: { filename: string; snbtData: any }[] = [];
 
     if (tabsRef.current.length > 0) {
@@ -1793,22 +1794,77 @@ function App() {
 
     if (allChapters.length === 0 && rewardTables.length === 0 && chapterGroups.length === 0) {
       showToast('No hay capítulos, tablas ni grupos para exportar', 'warning');
-      return;
+      return null;
     }
+    return {
+      chapters: allChapters,
+      rewardTables,
+      chapterGroups,
+      questData: questBookData || undefined,
+    };
+  };
+
+  const handleExportZip = async () => {
+    const opts = collectExportOptions();
+    if (!opts) return;
 
     try {
       showToast('Generando archivo .ZIP del Modpack...', 'info');
-      await exportModpackToZip({
-        chapters: allChapters,
-        rewardTables,
-        chapterGroups,
-        questData: questBookData || undefined,
-        zipFilename: 'ftbquests-modpack.zip'
-      });
+      await exportModpackToZip({ ...opts, zipFilename: 'ftbquests-modpack.zip' });
       showToast('¡Modpack .ZIP exportado exitosamente!', 'success');
     } catch (err: any) {
       console.error('Error exportando .ZIP:', err);
       showToast(`Error al exportar .ZIP: ${err.message || err}`, 'warning');
+    }
+  };
+
+  // Carpeta de quests enlazada (File System Access API): permite guardar sin descargar ZIP
+  const [linkedFolder, setLinkedFolder] = useState<any>(null);
+
+  const handleOpenFolder = async () => {
+    if (!isFolderAccessSupported()) {
+      folderInputRef.current?.click();
+      return;
+    }
+    try {
+      const picked = await pickQuestFolder();
+      if (!picked) return;
+      const dir = await resolveQuestsDir(picked);
+      const files = await readQuestFolder(dir);
+      if (files.length === 0) {
+        showToast('La carpeta no contiene archivos .snbt', 'warning');
+        return;
+      }
+      setLinkedFolder(dir);
+      processFiles(files);
+      showToast(`Carpeta "${dir.name}" enlazada: ya puedes guardar directamente en ella`, 'success');
+    } catch (err: any) {
+      console.error('Error abriendo carpeta:', err);
+      showToast(`No se pudo abrir la carpeta: ${err.message || err}`, 'warning');
+    }
+  };
+
+  const handleSaveToFolder = async () => {
+    const opts = collectExportOptions();
+    if (!opts) return;
+    try {
+      let dir = linkedFolder;
+      if (!dir) {
+        const picked = await pickQuestFolder();
+        if (!picked) return;
+        dir = await resolveQuestsDir(picked);
+      }
+      const files = buildModpackFiles(opts);
+      if (!window.confirm(`Se escribirán ${files.length} archivos en la carpeta "${dir.name}", sobrescribiendo los que ya existan.
+(No se borra nada: los capítulos eliminados en el editor seguirán en la carpeta.)
+
+¿Continuar?`)) return;
+      const n = await writeQuestFiles(dir, files);
+      setLinkedFolder(dir);
+      showToast(`Guardados ${n} archivos en "${dir.name}"`, 'success');
+    } catch (err: any) {
+      console.error('Error guardando en carpeta:', err);
+      showToast(`Error al guardar en la carpeta: ${err.message || err}`, 'warning');
     }
   };
 
@@ -2766,12 +2822,23 @@ function App() {
             >
               <span>📦</span> Modpack (.zip)
             </button>
+            {isFolderAccessSupported() && (
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '6px 8px', fontSize: '0.74rem', gap: '5px', justifyContent: 'center' }}
+                onClick={handleSaveToFolder}
+                disabled={!snbtData && tabs.length === 0}
+                title="Guardar todos los capítulos, tablas y ajustes directamente en la carpeta de quests (sin ZIP)"
+              >
+                <span>💾</span> {linkedFolder ? `Guardar en "${linkedFolder.name}"` : 'Guardar en carpeta…'}
+              </button>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
             <button
               className="btn btn-secondary"
               style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
-              onClick={() => folderInputRef.current?.click()}
+              onClick={handleOpenFolder}
               title="Abrir una carpeta de quests completa (data.snbt, chapter_groups.snbt, chapters/ y reward_tables/)"
             >
               <span>📂</span> Abrir carpeta

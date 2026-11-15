@@ -20,69 +20,55 @@ export interface ModpackZipOptions {
   zipFilename?: string;
 }
 
+export interface ModpackFile {
+  /** Ruta relativa a la carpeta quests (ej. "chapters/a.snbt") */
+  path: string;
+  content: string;
+}
+
+const withSnbt = (name: string) => (name.endsWith('.snbt') ? name : `${name}.snbt`);
+const contentOf = (f: ZipExportFile) => (f.content !== undefined ? f.content : f.snbtData ? stringifySNBT(f.snbtData) : '');
+
+/**
+ * Lista de archivos de un libro de misiones, con rutas relativas a la carpeta `quests`:
+ * chapters/*.snbt, reward_tables/*.snbt, data.snbt y chapter_groups.snbt.
+ */
+export function buildModpackFiles(options: ModpackZipOptions): ModpackFile[] {
+  const { chapters, rewardTables = [], chapterGroups = [], questData } = options;
+  const files: ModpackFile[] = [];
+
+  chapters.forEach((item) => files.push({ path: `chapters/${withSnbt(item.filename)}`, content: contentOf(item) }));
+
+  rewardTables.forEach((entry) => {
+    if ('rewards' in entry) {
+      const table = entry as RewardTable;
+      files.push({ path: `reward_tables/${(table.id || 'table').toLowerCase()}.snbt`, content: rewardTableToSNBT(table) });
+    } else {
+      const file = entry as ZipExportFile;
+      files.push({ path: `reward_tables/${withSnbt(file.filename)}`, content: contentOf(file) });
+    }
+  });
+
+  if (questData) files.push({ path: 'data.snbt', content: stringifySNBT(questData) });
+
+  if (chapterGroups.length > 0) {
+    files.push({
+      path: 'chapter_groups.snbt',
+      content: stringifySNBT({ chapter_groups: chapterGroups.map((g) => ({ id: g.id, title: g.title })) }),
+    });
+  }
+
+  return files;
+}
+
 /**
  * Empaqueta todos los capítulos y tablas de recompensas en un único archivo .ZIP
- * con la estructura canónica de carpetas de FTB Quests para Minecraft:
- * 
- * config/
- * └── ftbquests/
- *     └── quests/
- *         ├── chapters/
- *         │   └── *.snbt
- *         └── reward_tables/
- *             └── *.snbt
+ * con la estructura canónica de carpetas de FTB Quests: config/ftbquests/quests/...
  */
 export async function buildModpackZip(options: ModpackZipOptions): Promise<Blob> {
-  const { chapters, rewardTables = [], chapterGroups = [], questData } = options;
-
   const zip = new JSZip();
   const basePath = 'config/ftbquests/quests';
-
-  // Carpeta de Capítulos
-  const chaptersFolder = zip.folder(`${basePath}/chapters`);
-  if (chaptersFolder) {
-    chapters.forEach((item) => {
-      const cleanName = item.filename.endsWith('.snbt') ? item.filename : `${item.filename}.snbt`;
-      const fileContent = item.content !== undefined ? item.content : (item.snbtData ? stringifySNBT(item.snbtData) : '');
-      chaptersFolder.file(cleanName, fileContent);
-    });
-  }
-
-  // Carpeta de Tablas de Recompensas (si existen)
-  if (rewardTables.length > 0) {
-    const rewardTablesFolder = zip.folder(`${basePath}/reward_tables`);
-    if (rewardTablesFolder) {
-      rewardTables.forEach((entry) => {
-        if ('rewards' in entry) {
-          const table = entry as RewardTable;
-          const cleanName = `${(table.id || 'table').toLowerCase()}.snbt`;
-          const content = rewardTableToSNBT(table);
-          rewardTablesFolder.file(cleanName, content);
-        } else {
-          const file = entry as ZipExportFile;
-          const cleanName = file.filename.endsWith('.snbt') ? file.filename : `${file.filename}.snbt`;
-          const content = file.content !== undefined ? file.content : (file.snbtData ? stringifySNBT(file.snbtData) : '');
-          rewardTablesFolder.file(cleanName, content);
-        }
-      });
-    }
-  }
-
-  // Archivo data.snbt (ajustes globales del libro de misiones)
-  if (questData) {
-    zip.file(`${basePath}/data.snbt`, stringifySNBT(questData));
-  }
-
-  // Archivo chapter_groups.snbt (si existen grupos de capítulos definidos)
-  if (chapterGroups && chapterGroups.length > 0) {
-    const groupsSNBT = stringifySNBT({
-      chapter_groups: chapterGroups.map((g) => ({
-        id: g.id,
-        title: g.title,
-      })),
-    });
-    zip.file(`${basePath}/chapter_groups.snbt`, groupsSNBT);
-  }
+  for (const f of buildModpackFiles(options)) zip.file(`${basePath}/${f.path}`, f.content);
 
   return zip.generateAsync({
     type: 'blob',
