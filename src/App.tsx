@@ -62,11 +62,11 @@ function App() {
   const {
     snbtData, filename, viewMode, setViewMode,
     quests, images, setImages,
-    tabs, setTabs, activeTabId, isDirty, setIsDirty, currentCameraRef,
+    tabs, setTabs, activeTabId, setIsDirty, currentCameraRef,
     rawSelection, lockedKeys, setLockedKeys, selection, setSelection,
     history, historyIndex, tabsRef, activeTabIdRef,
     questsRef, imagesRef, selectionRef,
-    updateState, undo, redo, loadTab, handleSelectTab, handleCloseTab, handleNewBlankTab,
+    updateState, undo, redo, saveActiveTab, loadTab, handleSelectTab, handleCloseTab, handleNewBlankTab,
   } = useChapterDocument(showToast);
   const [isRewardTableModalOpen, setIsRewardTableModalOpen] = useState<boolean>(false);
   const [isCrossChapterModalOpen, setIsCrossChapterModalOpen] = useState<boolean>(false);
@@ -402,7 +402,7 @@ function App() {
 
   // data.snbt, chapter_groups.snbt y reward_tables/ de una carpeta de quests
   const { copyToClipboard, pasteFromClipboard, toggleLock, toggleLockSelected, duplicateSelection, pinSelectionToClipboard, pastePinnedAsset } = useSelectionOps({ clipboardRef, currentCameraRef, images, imagesRef, lockedKeys, mouseCanvasPosRef, pinnedAssets, quests, questsRef, savePinnedAssets, selection, selectionRef, setClipboard, setLockedKeys, setSelection, showToast, snapToGrid, snbtData, updateState });
-  const { handleFileUpload, handleDragOver, handleDragLeave, handleDrop, handleExport, handleExportAll, handleExportZip, linkedFolder, handleOpenFolder, handleSaveToFolder } = useQuestFiles({ activeTabIdRef, chapterGroups, currentCameraRef, filename, folderInputRef, handleUpdateChapterGroups, handleUpdateQuestBook, handleUpdateRewardTables, history, historyIndex, images, isDirty, loadTab, lockedKeys, questBookData, quests, rewardTables, selection, setIsDirty, setIsDraggingFile, setTabs, showToast, snbtData, tabsRef, viewMode });
+  const { handleFileUpload, handleDragOver, handleDragLeave, handleDrop, handleExport, handleExportAll, handleExportZip, linkedFolder, handleOpenFolder, handleSaveToFolder } = useQuestFiles({ saveActiveTab, activeTabIdRef, chapterGroups, filename, folderInputRef, handleUpdateChapterGroups, handleUpdateQuestBook, handleUpdateRewardTables, images, loadTab, questBookData, quests, rewardTables, setIsDirty, setIsDraggingFile, setTabs, showToast, snbtData, tabsRef });
   const addQuest = () => {
     const newQuest = {
       id: generateHexId(),

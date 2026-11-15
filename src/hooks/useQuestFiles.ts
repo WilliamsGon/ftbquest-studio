@@ -10,34 +10,28 @@ import { parseSNBT, stringifySNBT } from '../utils/snbt';
 import { buildModpackFiles, exportModpackToZip } from '../utils/zipExporter';
 
 export interface QuestFilesContext {
+  saveActiveTab: (list: ChapterTab[]) => ChapterTab[];
   activeTabIdRef: React.RefObject<string>;
   chapterGroups: ChapterGroup[];
-  currentCameraRef: React.RefObject<{ pos?: { x: number; y: number; } | undefined; scale: number; }>;
   filename: string;
   folderInputRef: React.RefObject<HTMLInputElement | null>;
   handleUpdateChapterGroups: (newGroups: ChapterGroup[]) => void;
   handleUpdateQuestBook: (newData: any) => void;
   handleUpdateRewardTables: (newTables: RewardTable[]) => void;
-  history: { quests: any[]; images: any[]; snbtData: any; }[];
-  historyIndex: number;
   images: any[];
-  isDirty: boolean;
   loadTab: (tab: ChapterTab) => void;
-  lockedKeys: string[];
   questBookData: any;
   quests: any[];
   rewardTables: RewardTable[];
-  selection: { type: "quest" | "image" | "mixed" | "dependency" | null; ids: (string | number)[]; items: { type: "quest" | "image"; id: string | number; }[]; id: string | number; dependency: { sourceId: string; targetId: string; } | null; };
   setIsDirty: React.Dispatch<React.SetStateAction<boolean>>;
   setIsDraggingFile: React.Dispatch<React.SetStateAction<boolean>>;
   setTabs: React.Dispatch<React.SetStateAction<ChapterTab[]>>;
   showToast: (message: string, type?: string) => void;
   snbtData: any;
   tabsRef: React.RefObject<ChapterTab[]>;
-  viewMode: "map" | "table";
 }
 
-export function useQuestFiles({ activeTabIdRef, chapterGroups, currentCameraRef, filename, folderInputRef, handleUpdateChapterGroups, handleUpdateQuestBook, handleUpdateRewardTables, history, historyIndex, images, isDirty, loadTab, lockedKeys, questBookData, quests, rewardTables, selection, setIsDirty, setIsDraggingFile, setTabs, showToast, snbtData, tabsRef, viewMode }: QuestFilesContext) {
+export function useQuestFiles({ saveActiveTab, activeTabIdRef, chapterGroups, filename, folderInputRef, handleUpdateChapterGroups, handleUpdateQuestBook, handleUpdateRewardTables, images, loadTab, questBookData, quests, rewardTables, setIsDirty, setIsDraggingFile, setTabs, showToast, snbtData, tabsRef }: QuestFilesContext) {
   const importQuestExtras = async (classified: ClassifiedFile[]) => {
     const extras = await readQuestExtras(classified);
     const parts: string[] = [];
@@ -77,29 +71,7 @@ export function useQuestFiles({ activeTabIdRef, chapterGroups, currentCameraRef,
     }
 
     // Guardar pestaña activa antes de cargar nuevos archivos
-    if (activeTabIdRef.current) {
-      setTabs(prev => prev.map(t => {
-        if (t.id === activeTabIdRef.current) {
-          return {
-            ...t,
-            filename: filename,
-            title: snbtData?.title || filename.replace(/\.snbt$/, ''),
-            snbtData: snbtData,
-            quests: quests,
-            images: images,
-            history: history,
-            historyIndex: historyIndex,
-            selection: selection,
-            lockedKeys: lockedKeys,
-            viewMode: viewMode,
-            stagePos: currentCameraRef.current.pos,
-            stageScale: currentCameraRef.current.scale,
-            isDirty: isDirty
-          };
-        }
-        return t;
-      }));
-    }
+    if (activeTabIdRef.current) setTabs(prev => saveActiveTab(prev));
 
     const loadedTabs: ChapterTab[] = [];
     let processedCount = 0;

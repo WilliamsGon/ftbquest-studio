@@ -219,6 +219,25 @@ export function useChapterDocument(showToast: ShowToast) {
     }
   };
 
+  /** Vuelca el estado en edición (capítulo, historial, selección, cámara…) sobre la pestaña activa. */
+  const saveActiveTab = (list: ChapterTab[]): ChapterTab[] =>
+    list.map(t => t.id !== activeTabIdRef.current ? t : {
+      ...t,
+      filename: filename,
+      title: snbtData?.title || filename.replace(/\.snbt$/, ''),
+      snbtData: snbtData,
+      quests: quests,
+      images: images,
+      history: history,
+      historyIndex: historyIndex,
+      selection: selection,
+      lockedKeys: lockedKeys,
+      viewMode: viewMode,
+      stagePos: currentCameraRef.current.pos,
+      stageScale: currentCameraRef.current.scale,
+      isDirty: isDirty
+    });
+
   const loadTab = (tab: ChapterTab) => {
     setActiveTabId(tab.id);
     setSnbtData(tab.snbtData);
@@ -243,31 +262,8 @@ export function useChapterDocument(showToast: ShowToast) {
     if (!targetTab) return;
 
     // Guardar el estado de la pestaña actual antes de conmutar
-    if (activeTabIdRef.current) {
-      setTabs(prev => {
-        return prev.map(t => {
-          if (t.id === activeTabIdRef.current) {
-            return {
-              ...t,
-              filename: filename,
-              title: snbtData?.title || filename.replace(/\.snbt$/, ''),
-              snbtData: snbtData,
-              quests: quests,
-              images: images,
-              history: history,
-              historyIndex: historyIndex,
-              selection: selection,
-              lockedKeys: lockedKeys,
-              viewMode: viewMode,
-              stagePos: currentCameraRef.current.pos,
-              stageScale: currentCameraRef.current.scale,
-              isDirty: isDirty
-            };
-          }
-          return t;
-        });
-      });
-    }
+    // Guardar el estado de la pestaña actual antes de conmutar
+    if (activeTabIdRef.current) setTabs(prev => saveActiveTab(prev));
 
     loadTab(targetTab);
   };
@@ -341,34 +337,7 @@ export function useChapterDocument(showToast: ShowToast) {
       isDirty: true
     };
 
-    if (activeTabIdRef.current) {
-      setTabs(prev => {
-        const updated = prev.map(t => {
-          if (t.id === activeTabIdRef.current) {
-            return {
-              ...t,
-              filename: filename,
-              title: snbtData?.title || filename.replace(/\.snbt$/, ''),
-              snbtData: snbtData,
-              quests: quests,
-              images: images,
-              history: history,
-              historyIndex: historyIndex,
-              selection: selection,
-              lockedKeys: lockedKeys,
-              viewMode: viewMode,
-              stagePos: currentCameraRef.current.pos,
-              stageScale: currentCameraRef.current.scale,
-              isDirty: isDirty
-            };
-          }
-          return t;
-        });
-        return [...updated, newTab];
-      });
-    } else {
-      setTabs(prev => [...prev, newTab]);
-    }
+    setTabs(prev => [...(activeTabIdRef.current ? saveActiveTab(prev) : prev), newTab]);
 
     loadTab(newTab);
     showToast(`Nuevo capítulo "Nuevo Capítulo ${newIndex}" creado`, 'success');
@@ -381,6 +350,6 @@ export function useChapterDocument(showToast: ShowToast) {
     rawSelection, lockedKeys, setLockedKeys, selection, setSelection,
     history, historyIndex, historyRef, historyIndexRef, tabsRef, activeTabIdRef, isDirtyRef,
     questsRef, imagesRef, selectionRef,
-    updateState, undo, redo, loadTab, handleSelectTab, handleCloseTab, handleNewBlankTab,
+    updateState, undo, redo, saveActiveTab, loadTab, handleSelectTab, handleCloseTab, handleNewBlankTab,
   };
 }
