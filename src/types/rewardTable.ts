@@ -10,8 +10,11 @@ export interface RewardTableEntry {
   command?: string;
   player_command?: boolean;
   weight: number;
+  random_bonus?: number;
   title?: string;
   icon?: string | any;
+  // Campos desconocidos del SNBT original se conservan tal cual al reexportar
+  [extra: string]: any;
 }
 
 export interface LootCrateConfig {
@@ -46,6 +49,38 @@ const getNum = (v: any, def = 0): number => {
   return def;
 };
 
+/**
+ * Serializa una entrada igual que FTB Quests: las entradas de ítem no llevan `type`
+ * ni campos vacíos (xp, command...); solo se escribe lo relevante para su tipo.
+ */
+function serializeRewardEntry(r: RewardTableEntry): any {
+  // `id` es un identificador interno del editor y `type` se decide abajo
+  const { id: _id, type, item, count, xp, xp_levels, command, player_command, weight, random_bonus, title, icon, ...extra } = r;
+  const entry: any = {};
+  const t = type || 'item';
+
+  if (t === 'item') {
+    if (item !== undefined) entry.item = item;
+    if (count !== undefined && count > 1) entry.count = count;
+    if (random_bonus) entry.random_bonus = random_bonus;
+  } else {
+    entry.type = t;
+    if (t === 'xp') entry.xp = xp ?? 0;
+    if (t === 'xp_levels') entry.xp_levels = xp_levels ?? 0;
+    if (t === 'command') {
+      entry.command = command ?? '';
+      if (player_command) entry.player_command = true;
+    }
+    if (item !== undefined && t !== 'command') entry.item = item;
+  }
+  if (title) entry.title = title;
+  if (icon) entry.icon = icon;
+  if (weight !== undefined && weight !== 1) {
+    entry.weight = { __type: 'number', value: weight, suffix: 'f' };
+  }
+  return { ...entry, ...extra };
+}
+
 export function rewardTableToSNBT(table: RewardTable): string {
   const snbtObj: any = {
     id: table.id,
@@ -53,13 +88,7 @@ export function rewardTableToSNBT(table: RewardTable): string {
     title: table.title,
     icon: table.icon || 'minecraft:chest',
     loot_size: table.loot_size ?? 1,
-    rewards: table.rewards.map(r => {
-      const entry: any = { ...r };
-      if (entry.weight !== undefined) {
-        entry.weight = { __type: 'number', value: entry.weight, suffix: 'f' };
-      }
-      return entry;
-    })
+    rewards: table.rewards.map(serializeRewardEntry)
   };
 
   if (table.hide_tooltip) snbtObj.hide_tooltip = true;
@@ -90,7 +119,8 @@ export function rewardTableToSNBT(table: RewardTable): string {
 export function snbtToRewardTable(snbtString: string, fallbackFilename = 'reward_table'): RewardTable {
   const parsed = parseSNBT(snbtString);
 
-  const rewards = Array.isArray(parsed.rewards) ? parsed.rewards.map((r: any) => ({
+  const rewards: RewardTableEntry[] = Array.isArray(parsed.rewards) ? parsed.rewards.map((r: any) => ({
+    ...r,
     id: r.id,
     type: r.type || 'item',
     item: r.item,
@@ -100,6 +130,7 @@ export function snbtToRewardTable(snbtString: string, fallbackFilename = 'reward
     command: r.command,
     player_command: r.player_command,
     weight: getNum(r.weight, 1.0),
+    random_bonus: getNum(r.random_bonus, 0),
     title: r.title,
     icon: r.icon
   })) : [];
