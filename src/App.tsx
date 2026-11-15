@@ -34,6 +34,9 @@ import type { TranslationEntry } from './types/i18n';
 import { applyI18nKeysToChapters } from './utils/i18nManager';
 import type { ChapterGroup } from './types/chapterGroup';
 import { exportModpackToZip } from './utils/zipExporter';
+import { QuestBookSettingsModal } from './components/QuestBookSettingsModal';
+import { classifyQuestFiles, readQuestExtras } from './utils/questBook';
+import type { ClassifiedFile } from './utils/questBook';
 import { MinecraftTextToolbar } from './components/MinecraftTextToolbar';
 import { MinecraftFormattedPreview } from './components/MinecraftFormattedPreview';
 import { CrossChapterDependencyModal } from './components/CrossChapterDependencyModal';
@@ -196,6 +199,18 @@ function App() {
     ];
   });
   const [isChapterGroupModalOpen, setIsChapterGroupModalOpen] = useState<boolean>(false);
+
+  // Ajustes globales del libro de misiones (data.snbt)
+  const [questBookData, setQuestBookData] = useState<any | null>(() => {
+    try {
+      const stored = localStorage.getItem('ftb_quest_book_data');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error('Error loading quest book data from localStorage:', e);
+    }
+    return null;
+  });
+  const [isQuestBookModalOpen, setIsQuestBookModalOpen] = useState<boolean>(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState<boolean>(false);
   const [isTranslationModalOpen, setIsTranslationModalOpen] = useState<boolean>(false);
@@ -446,6 +461,15 @@ function App() {
     showToast('Textos convertidos a claves I18n {clave} y sincronizados en el modpack', 'success');
   };
 
+  const handleUpdateQuestBook = (newData: any) => {
+    setQuestBookData(newData);
+    try {
+      localStorage.setItem('ftb_quest_book_data', JSON.stringify(newData));
+    } catch (e) {
+      console.error('Error saving quest book data:', e);
+    }
+  };
+
   const handleUpdateChapterGroups = (newGroups: ChapterGroup[]) => {
     setChapterGroups(newGroups);
     try {
@@ -641,6 +665,7 @@ function App() {
   const [texturePicker, setTexturePicker] = useState<{ isOpen: boolean; targetType: 'icon' | 'image'; onSelect: (val: string) => void; title: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Función unificada para actualizar estado y guardar en el historial
   const updateState = (newQuests: any[], newImages: any[], bypassHistory = false, newSnbtData?: any) => {
@@ -1244,10 +1269,42 @@ function App() {
     showToast(`Nuevo capítulo "Nuevo Capítulo ${newIndex}" creado`, 'success');
   };
 
-  const processFiles = (files: File[]) => {
-    const snbtFiles = files.filter(f => f.name.endsWith('.snbt'));
+  // data.snbt, chapter_groups.snbt y reward_tables/ de una carpeta de quests
+  const importQuestExtras = async (classified: ClassifiedFile[]) => {
+    const extras = await readQuestExtras(classified);
+    const parts: string[] = [];
+
+    if (extras.data) {
+      handleUpdateQuestBook(extras.data);
+      parts.push('data.snbt');
+    }
+    if (extras.chapterGroups) {
+      handleUpdateChapterGroups(extras.chapterGroups);
+      parts.push(`${extras.chapterGroups.length} grupos`);
+    }
+    if (extras.rewardTables.length > 0) {
+      const byId = new Map(rewardTables.map(t => [t.id, t]));
+      extras.rewardTables.forEach(t => byId.set(t.id, t));
+      handleUpdateRewardTables(Array.from(byId.values()));
+      parts.push(`${extras.rewardTables.length} tablas de recompensas`);
+    }
+
+    if (parts.length > 0) showToast(`Importado: ${parts.join(', ')}`, 'success');
+    extras.errors.forEach(err => showToast(`Error al leer ${err}`, 'warning'));
+  };
+
+  const processFiles = (allFiles: File[]) => {
+    const classified = classifyQuestFiles(allFiles);
+    const hasExtras = classified.some(c => c.kind !== 'chapter');
+    if (hasExtras) {
+      importQuestExtras(classified);
+    }
+
+    const snbtFiles = classified.filter(c => c.kind === 'chapter').map(c => c.file);
     if (snbtFiles.length === 0) {
-      showToast('Por favor, selecciona o arrastra archivos con extensión .snbt', 'warning');
+      if (!hasExtras) {
+        showToast('Por favor, selecciona o arrastra archivos con extensión .snbt', 'warning');
+      }
       return;
     }
 
@@ -1743,6 +1800,7 @@ function App() {
         chapters: allChapters,
         rewardTables,
         chapterGroups,
+        questData: questBookData || undefined,
         zipFilename: 'ftbquests-modpack.zip'
       });
       showToast('¡Modpack .ZIP exportado exitosamente!', 'success');
@@ -2685,6 +2743,13 @@ function App() {
               <Upload size={16} /> Abrir
             </button>
             <input type="file" accept=".snbt" multiple ref={fileInputRef} className="file-input-hidden" onChange={handleFileUpload} />
+            <input
+              type="file"
+              ref={folderInputRef}
+              className="file-input-hidden"
+              onChange={handleFileUpload}
+              {...({ webkitdirectory: '', directory: '' } as any)}
+            />
             <button className="btn btn-primary btn-full" onClick={handleExport} disabled={!snbtData}>
               <Download size={16} /> Exportar
             </button>
@@ -2698,6 +2763,24 @@ function App() {
               title="Empaquetar y exportar modpack en archivo .ZIP con estructura config/ftbquests/..."
             >
               <span>📦</span> Modpack (.zip)
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
+              onClick={() => folderInputRef.current?.click()}
+              title="Abrir una carpeta de quests completa (data.snbt, chapter_groups.snbt, chapters/ y reward_tables/)"
+            >
+              <span>📂</span> Abrir carpeta
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 4px', fontSize: '0.71rem', gap: '3px', justifyContent: 'center' }}
+              onClick={() => setIsQuestBookModalOpen(true)}
+              title="Ajustes globales del libro de misiones (data.snbt)"
+            >
+              <span>📘</span> Libro{questBookData ? '' : ' (sin data)'}
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginTop: '6px' }}>
@@ -4962,6 +5045,15 @@ function App() {
         onClose={() => setIsTranslationModalOpen(false)}
         chapters={tabs}
         onApplyTranslationsToModpack={handleApplyTranslationsToModpack}
+      />
+    )}
+
+    {isQuestBookModalOpen && (
+      <QuestBookSettingsModal
+        isOpen={isQuestBookModalOpen}
+        onClose={() => setIsQuestBookModalOpen(false)}
+        data={questBookData}
+        onUpdate={handleUpdateQuestBook}
       />
     )}
 

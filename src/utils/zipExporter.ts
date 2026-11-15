@@ -14,6 +14,8 @@ export interface ModpackZipOptions {
   chapters: ZipExportFile[];
   rewardTables?: (RewardTable | ZipExportFile)[];
   chapterGroups?: ChapterGroup[];
+  /** Contenido de data.snbt (ajustes globales del libro) */
+  questData?: any;
   zipName?: string;
   zipFilename?: string;
 }
@@ -31,7 +33,7 @@ export interface ModpackZipOptions {
  *             └── *.snbt
  */
 export async function exportModpackToZip(options: ModpackZipOptions): Promise<void> {
-  const { chapters, rewardTables = [], chapterGroups = [], zipName, zipFilename } = options;
+  const { chapters, rewardTables = [], chapterGroups = [], questData, zipName, zipFilename } = options;
   const finalZipName = zipFilename || zipName || 'ftbquests-modpack.zip';
 
   const zip = new JSZip();
@@ -65,6 +67,11 @@ export async function exportModpackToZip(options: ModpackZipOptions): Promise<vo
         }
       });
     }
+  }
+
+  // Archivo data.snbt (ajustes globales del libro de misiones)
+  if (questData) {
+    zip.file(`${basePath}/data.snbt`, stringifySNBT(questData));
   }
 
   // Archivo chapter_groups.snbt (si existen grupos de capítulos definidos)
