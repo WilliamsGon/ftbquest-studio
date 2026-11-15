@@ -10,6 +10,7 @@
  * - Resolución de prerrequisitos en cascada y reversión de misiones.
  */
 
+import { tableIdToHex } from './tableId';
 import type { RewardTable } from '../types/rewardTable';
 
 export interface VirtualRewardGrant {
@@ -188,8 +189,8 @@ export function completeQuestInSimulator(
         const lvlAmount = typeof rew.xp_levels === 'number' ? rew.xp_levels : 1;
         nextXpLevels += lvlAmount;
         grantedRewards.push({ type: 'xp_levels', xpLevels: lvlAmount });
-      } else if (rewType === 'loot' || rewType === 'choice') {
-        const tableId = normalizeQuestId(rew.table_id || rew.table);
+      } else if (rewType === 'loot' || rewType === 'choice' || rewType === 'random' || rewType === 'all_table') {
+        const tableId = normalizeQuestId(tableIdToHex(rew.table_id ?? rew.table));
         const matchedTable = rewardTables.find((t) => normalizeQuestId(t.id) === tableId);
         if (matchedTable) {
           const rolled = rollRewardTableItem(matchedTable);

@@ -11,6 +11,7 @@
  * - Rutinas de Auto-reparación en lote con un solo clic.
  */
 
+import { tableIdToHex } from './tableId';
 import type { RewardTable } from '../types/rewardTable';
 import { normalizeQuestId } from './questSimulatorEngine';
 
@@ -163,8 +164,8 @@ export function runModpackDiagnosis(
         });
       }
 
-      if (rewType === 'loot' || rewType === 'choice') {
-        const tableRef = normalizeQuestId(rew.table_id || rew.table);
+      if (rewType === 'loot' || rewType === 'choice' || rewType === 'random' || rewType === 'all_table') {
+        const tableRef = normalizeQuestId(tableIdToHex(rew.table_id ?? rew.table));
         if (!tableRef || (rewardTables.length > 0 && !knownTableIds.has(tableRef))) {
           issues.push({
             id: `issue_broken_table_${qId}_${idx}`,

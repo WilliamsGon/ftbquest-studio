@@ -3,12 +3,13 @@ import {
   Plus, Trash2, Copy, ChevronUp, ChevronDown, Settings, Search,
   Package, Tag, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
   Gift, Terminal, Dices, Layers, Trees, ShieldAlert,
-  Zap, Droplets, Eye, MapPin, BarChart3
+  Zap, Droplets, Eye, MapPin, BarChart3, ListChecks, Bell, Medal, Wand2
 } from 'lucide-react';
 import type { RewardTable } from '../types/rewardTable';
 import { ItemTagPickerModal } from './ItemTagPickerModal';
 import { QuestItemThumbnail } from '../utils/textureHelper';
 import { isItemTag } from '../utils/itemTagCatalogs';
+import { hexToTableIdNumber, tableIdToHex, tableIdFromInput } from '../utils/tableId';
 import { 
   MINECRAFT_ENTITIES, 
   MINECRAFT_BIOMES, 
@@ -288,11 +289,42 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
         };
         break;
       case 'random':
+      case 'loot':
+      case 'choice':
+      case 'all_table':
+        // Referencia a la primera tabla existente (long con signo); si no hay, queda vacía hasta elegir una
         newReward = {
           id: newId,
-          type: 'random',
-          table_id: { __type: 'number', value: 1, suffix: 'L' }
+          type,
+          ...(rewardTables.length > 0 ? { table_id: hexToTableIdNumber(rewardTables[0].id) } : {}),
+          ...(type !== 'all_table' ? { exclude_from_claim_all: true } : {})
         };
+        break;
+      case 'advancement':
+        newReward = {
+          id: newId,
+          type: 'advancement',
+          advancement: 'minecraft:story/root',
+          criterion: ''
+        };
+        break;
+      case 'toast':
+        newReward = {
+          id: newId,
+          type: 'toast',
+          title: '¡Misión completada!',
+          description: ''
+        };
+        break;
+      case 'gamestage':
+        newReward = {
+          id: newId,
+          type: 'gamestage',
+          stage: 'stage_one'
+        };
+        break;
+      case 'custom':
+        newReward = { id: newId, type: 'custom' };
         break;
       default:
         newReward = { id: newId, type };
@@ -385,8 +417,21 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
       case 'command':
         return { icon: <Terminal size={13} />, label: 'Comando', color: '#fab387', bg: 'rgba(250, 179, 135, 0.15)' };
       case 'random':
-      case 'loot':
         return { icon: <Dices size={13} />, label: 'Loot Aleatorio', color: '#f5c2e7', bg: 'rgba(245, 194, 231, 0.15)' };
+      case 'loot':
+        return { icon: <Dices size={13} />, label: 'Loot (Cofre)', color: '#f5c2e7', bg: 'rgba(245, 194, 231, 0.15)' };
+      case 'choice':
+        return { icon: <ListChecks size={13} />, label: 'Elección', color: '#f9e2af', bg: 'rgba(249, 226, 175, 0.15)' };
+      case 'all_table':
+        return { icon: <Gift size={13} />, label: 'Toda la Tabla', color: '#fab387', bg: 'rgba(250, 179, 135, 0.15)' };
+      case 'advancement':
+        return { icon: <Medal size={13} />, label: 'Logro', color: '#f9e2af', bg: 'rgba(249, 226, 175, 0.15)' };
+      case 'toast':
+        return { icon: <Bell size={13} />, label: 'Aviso (Toast)', color: '#89dceb', bg: 'rgba(137, 220, 235, 0.15)' };
+      case 'gamestage':
+        return { icon: <ShieldAlert size={13} />, label: 'GameStage', color: '#f5c2e7', bg: 'rgba(245, 194, 231, 0.15)' };
+      case 'custom':
+        return { icon: <Wand2 size={13} />, label: 'Custom (KubeJS)', color: '#b4befe', bg: 'rgba(180, 190, 254, 0.15)' };
       default:
         return { icon: <Layers size={13} />, label: type || 'Recompensa', color: '#a6adc8', bg: 'rgba(166, 173, 200, 0.15)' };
     }
@@ -1332,6 +1377,55 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                 >
                   <Dices size={14} style={{ color: '#f5c2e7' }} /> 🎲 Loot Table Aleatorio
                 </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('loot')}
+                >
+                  <Dices size={14} style={{ color: '#f5c2e7' }} /> 📦 Loot (Cofre de tabla)
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('choice')}
+                >
+                  <ListChecks size={14} style={{ color: '#f9e2af' }} /> 🧭 Elección (el jugador escoge)
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('all_table')}
+                >
+                  <Gift size={14} style={{ color: '#fab387' }} /> 🎁 Toda la tabla
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('advancement')}
+                >
+                  <Medal size={14} style={{ color: '#f9e2af' }} /> 🏅 Otorgar Logro
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('toast')}
+                >
+                  <Bell size={14} style={{ color: '#89dceb' }} /> 🔔 Aviso (Toast)
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('gamestage')}
+                >
+                  <ShieldAlert size={14} style={{ color: '#f5c2e7' }} /> 🔮 GameStage
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addRewardPreset('custom')}
+                >
+                  <Wand2 size={14} style={{ color: '#b4befe' }} /> 🪄 Custom (KubeJS)
+                </button>
               </div>
             )}
           </div>
@@ -1599,8 +1693,8 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                     </div>
                   )}
 
-                  {(reward.type === 'random' || reward.type === 'loot') && (() => {
-                    const currentTableVal = String(reward.table_id?.value ?? reward.table_id ?? reward.table ?? '');
+                  {(reward.type === 'random' || reward.type === 'loot' || reward.type === 'choice' || reward.type === 'all_table') && (() => {
+                    const currentTableVal = tableIdToHex(reward.table_id ?? reward.table);
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {rewardTables.length > 0 && (
@@ -1612,7 +1706,7 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                               onChange={(e) => {
                                 const selectedId = e.target.value;
                                 if (selectedId) {
-                                  updateRewardField(rIdx, 'table_id', selectedId);
+                                  updateRewardField(rIdx, 'table_id', hexToTableIdNumber(selectedId));
                                 }
                               }}
                             >
@@ -1646,12 +1740,8 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                             value={currentTableVal} 
                             placeholder="ID hexadecimal (ej. 51D981D0B7A98548)"
                             onChange={(e) => {
-                              const val = e.target.value;
-                              if (/^\d+$/.test(val)) {
-                                updateRewardField(rIdx, 'table_id', { __type: 'number', value: parseInt(val), suffix: 'L' });
-                              } else {
-                                updateRewardField(rIdx, 'table_id', val);
-                              }
+                              // Un ID completo (16 hex) se guarda como long con signo, como espera FTB Quests
+                              updateRewardField(rIdx, 'table_id', tableIdFromInput(e.target.value.trim()));
                             }}
                           />
                         </div>
@@ -1669,10 +1759,66 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                             <option value="disabled">Reclamar Manual</option>
                             <option value="invisible">Invisible</option>
                           </select>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!reward.exclude_from_claim_all}
+                              onChange={(e) => updateRewardField(rIdx, 'exclude_from_claim_all', e.target.checked ? true : undefined)}
+                            />
+                            <span>Excluir de "Reclamar todo"</span>
+                          </label>
                         </div>
                       </div>
                     );
                   })()}
+
+                  {reward.type === 'advancement' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <input type="text" className="input-field" style={{ fontSize: '0.8rem', padding: '5px 8px' }}
+                        value={reward.advancement || ''} placeholder="ID del logro (ej. minecraft:story/root)"
+                        onChange={(e) => updateRewardField(rIdx, 'advancement', e.target.value)} />
+                      <input type="text" className="input-field" style={{ fontSize: '0.76rem', padding: '4px 8px' }}
+                        value={reward.criterion || ''} placeholder="Criterio (vacío = logro completo)"
+                        onChange={(e) => updateRewardField(rIdx, 'criterion', e.target.value)} />
+                    </div>
+                  )}
+
+                  {reward.type === 'toast' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <input type="text" className="input-field" style={{ fontSize: '0.8rem', padding: '5px 8px' }}
+                        value={reward.title || ''} placeholder="Título del aviso"
+                        onChange={(e) => updateRewardField(rIdx, 'title', e.target.value)} />
+                      <input type="text" className="input-field" style={{ fontSize: '0.76rem', padding: '4px 8px' }}
+                        value={reward.description || ''} placeholder="Descripción (opcional)"
+                        onChange={(e) => updateRewardField(rIdx, 'description', e.target.value)} />
+                    </div>
+                  )}
+
+                  {reward.type === 'gamestage' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <input type="text" className="input-field" list="gamestages-datalist" style={{ fontSize: '0.8rem', padding: '5px 8px' }}
+                        value={reward.stage || ''} placeholder="Etapa (ej. stage_one)"
+                        onChange={(e) => updateRewardField(rIdx, 'stage', e.target.value)} />
+                      <div style={{ display: 'flex', gap: '12px', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                          <input type="checkbox" checked={!!reward.remove}
+                            onChange={(e) => updateRewardField(rIdx, 'remove', e.target.checked ? true : undefined)} />
+                          <span>Quitar etapa</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                          <input type="checkbox" checked={!!reward.silent}
+                            onChange={(e) => updateRewardField(rIdx, 'silent', e.target.checked ? true : undefined)} />
+                          <span>Silenciosa</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {reward.type === 'custom' && (
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                      Recompensa personalizada: su lógica se define por script (KubeJS) escuchando el evento de reclamo.
+                    </div>
+                  )}
                 </div>
               );
             })}
