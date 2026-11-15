@@ -45,7 +45,9 @@ export function getGiveRequiredItemsCommands(quests: any[], playerTarget: string
       if ((task.type || 'item') === 'item' && task.item) {
         const itemId = typeof task.item === 'string' ? task.item : task.item?.id;
         if (itemId && !itemId.startsWith('#')) {
-          const count = typeof task.count === 'number' && task.count > 0 ? task.count : 1;
+          // El count real llega como número SNBT ({ value, suffix }), no como number primitivo
+          const rawCount = typeof task.count === 'object' && task.count !== null ? task.count.value : task.count;
+          const count = typeof rawCount === 'number' && rawCount > 0 ? rawCount : 1;
           itemMap.set(itemId, (itemMap.get(itemId) || 0) + count);
         }
       }

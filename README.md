@@ -99,6 +99,7 @@ npm install
 npm run dev       # servidor de desarrollo
 npm run build     # tsc -b && vite build
 npm run lint      # oxlint
+npm test          # Vitest (pruebas unitarias)
 npm run preview   # previsualizar el build
 ```
 
@@ -143,4 +144,5 @@ npm run preview   # previsualizar el build
 
 ### Notas técnicas
 - `snbt.ts` representa los números como `{ __type: 'number', value, suffix }` para conservar sufijos (`b`, `d`, `f`, `L`). Las claves que empiezan por `_` son internas y no se exportan. El parser es tolerante y no valida; no conserva comentarios.
-- No hay suite de tests automatizados.
+- Tests con Vitest (`npm test`): parser SNBT, reward tables, `table_id`, libro de misiones, validación de grafo, auto-layout, comandos y ZIP.
+- `src/utils/realQuests.test.ts` comprueba el editor con quests reales de modpacks; se omite si no existe la carpeta `recursos-externos/` (no se versiona). Se puede apuntar a otra con `FTB_REAL_QUESTS_DIR`.

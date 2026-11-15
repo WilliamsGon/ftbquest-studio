@@ -32,9 +32,8 @@ export interface ModpackZipOptions {
  *         └── reward_tables/
  *             └── *.snbt
  */
-export async function exportModpackToZip(options: ModpackZipOptions): Promise<void> {
-  const { chapters, rewardTables = [], chapterGroups = [], questData, zipName, zipFilename } = options;
-  const finalZipName = zipFilename || zipName || 'ftbquests-modpack.zip';
+export async function buildModpackZip(options: ModpackZipOptions): Promise<Blob> {
+  const { chapters, rewardTables = [], chapterGroups = [], questData } = options;
 
   const zip = new JSZip();
   const basePath = 'config/ftbquests/quests';
@@ -85,12 +84,17 @@ export async function exportModpackToZip(options: ModpackZipOptions): Promise<vo
     zip.file(`${basePath}/chapter_groups.snbt`, groupsSNBT);
   }
 
-  // Generar blob y descargar
-  const blob = await zip.generateAsync({
+  return zip.generateAsync({
     type: 'blob',
     compression: 'DEFLATE',
     compressionOptions: { level: 9 }
   });
+}
+
+/** Genera el ZIP y lo descarga en el navegador. */
+export async function exportModpackToZip(options: ModpackZipOptions): Promise<void> {
+  const finalZipName = options.zipFilename || options.zipName || 'ftbquests-modpack.zip';
+  const blob = await buildModpackZip(options);
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
