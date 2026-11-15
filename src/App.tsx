@@ -518,9 +518,12 @@ function App() {
       prevAvailableZLevelsRef.current = [];
       return;
     }
+    // Se captura ANTES del updater: React puede ejecutarlo más tarde (ya con el ref actualizado abajo),
+    // y entonces los niveles nuevos no se detectaban y todas las imágenes quedaban ocultas.
+    const prevAvailable = prevAvailableZLevelsRef.current;
     setVisibleZLevels(prev => {
       // Si el estado visible anterior estaba vacío y no había niveles previos, activamos todos por defecto
-      if (prev.length === 0 && prevAvailableZLevelsRef.current.length === 0) {
+      if (prev.length === 0 && prevAvailable.length === 0) {
         return [...availableZLevels];
       }
       
@@ -529,7 +532,6 @@ function App() {
       
       // Los niveles verdaderamente nuevos son aquellos que están en availableZLevels
       // pero que NO estaban en el conjunto de niveles disponibles del renderizado anterior (independientemente de si estaban activos o no)
-      const prevAvailable = prevAvailableZLevelsRef.current;
       const trulyNewLevels = availableZLevels.filter(l => !prevAvailable.includes(l));
       
       return [...currentVisible, ...trulyNewLevels].sort((a, b) => a - b);
