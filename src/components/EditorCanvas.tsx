@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createStageFreezer, HEAVY_SCENE_COST, sceneCost } from '../utils/stageFreeze';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
 import { MousePointer, Hand, Crosshair, Magnet, Sparkles, ChevronDown, Search, Zap } from 'lucide-react';
 import Konva from 'konva';
@@ -1202,6 +1203,58 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
   // Mientras la cámara se mueve (zoom con la rueda o paneo) no hace falta el grafo de impacto:
   // dibujarlo en cada fotograma casi duplica el coste del dibujado en mapas masivos.
   const hitRestoreTimerRef = useRef<number | undefined>(undefined);
+
+  // En escenas pesadas el zoom y el paneo no redibujan: se transforman con CSS los canvas ya
+  // pintados y se dibuja una sola vez al terminar (ver utils/stageFreeze).
+  const isHeavyScene = sceneCost(quests.length, images.length) >= HEAVY_SCENE_COST;
+  const freezerRef = useRef(createStageFreezer());
+  const frozenStageRef = useRef<any>(null);
+  const cameraIdleTimerRef = useRef<number | undefined>(undefined);
+  const cameraMaxWaitTimerRef = useRef<number | undefined>(undefined);
+  const [cameraCommitTick, setCameraCommitTick] = useState(0);
+
+  const clearCameraTimers = () => {
+    window.clearTimeout(cameraIdleTimerRef.current);
+    window.clearTimeout(cameraMaxWaitTimerRef.current);
+    cameraIdleTimerRef.current = undefined;
+    cameraMaxWaitTimerRef.current = undefined;
+  };
+
+  /** Última cámara virtual pendiente de traspasar al estado de React. */
+  const pendingCameraRef = useRef<{ x: number; y: number; scale: number } | null>(null);
+  const moveFrozenCamera = (stage: any, cam: { x: number; y: number; scale: number }) => {
+    frozenStageRef.current = stage;
+    freezerRef.current.freeze(stage); // si ya estaba congelado no hace nada
+    pendingCameraRef.current = cam;
+    freezerRef.current.setCamera(cam, stage);
+  };
+
+  /** Traspasa la cámara virtual al estado de React; el descongelado ocurre tras ese render. */
+  const commitFrozenCamera = () => {
+    clearCameraTimers();
+    const cam = pendingCameraRef.current;
+    if (!cam) return;
+    pendingCameraRef.current = null;
+    setStageScale(cam.scale);
+    setStagePos({ x: cam.x, y: cam.y });
+    setCameraCommitTick(t => t + 1);
+  };
+
+  const scheduleCameraCommit = (idleMs: number, maxWaitMs: number) => {
+    window.clearTimeout(cameraIdleTimerRef.current);
+    cameraIdleTimerRef.current = window.setTimeout(commitFrozenCamera, idleMs);
+    if (cameraMaxWaitTimerRef.current === undefined) {
+      cameraMaxWaitTimerRef.current = window.setTimeout(commitFrozenCamera, maxWaitMs);
+    }
+  };
+
+  useEffect(() => {
+    if (cameraCommitTick === 0) return;
+    const stage = frozenStageRef.current;
+    if (stage && freezerRef.current.isFrozen) freezerRef.current.thaw(stage);
+  }, [cameraCommitTick]);
+
+  useEffect(() => () => clearCameraTimers(), []);
   const restoreHitGraph = (stage: any) => {
     try {
       stage.getLayers().forEach((l: any) => {
@@ -1224,20 +1277,31 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     e.evt.preventDefault();
     const scaleBy = 1.1;
     const stage = e.target.getStage();
-    suspendHitGraph(stage, 140);
-    const oldScale = stage.scaleX();
+    if (!isHeavyScene) suspendHitGraph(stage, 140);
+    if (isHeavyScene) freezerRef.current.freeze(stage);
+    const cam = isHeavyScene ? (pendingCameraRef.current ?? freezerRef.current.camera) : { x: stage.x(), y: stage.y(), scale: stage.scaleX() };
+    const oldScale = cam.scale;
+    const pointer = stage.getPointerPosition();
 
     const mousePointTo = {
-      x: stage.getPointerPosition().x / oldScale - stage.x() / oldScale,
-      y: stage.getPointerPosition().y / oldScale - stage.y() / oldScale,
+      x: pointer.x / oldScale - cam.x / oldScale,
+      y: pointer.y / oldScale - cam.y / oldScale,
     };
 
     const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+    const newPos = {
+      x: -(mousePointTo.x - pointer.x / newScale) * newScale,
+      y: -(mousePointTo.y - pointer.y / newScale) * newScale,
+    };
+
+    if (isHeavyScene) {
+      moveFrozenCamera(stage, { x: newPos.x, y: newPos.y, scale: newScale });
+      scheduleCameraCommit(130, 350);
+      return;
+    }
+
     setStageScale(newScale);
-    setStagePos({
-      x: -(mousePointTo.x - stage.getPointerPosition().x / newScale) * newScale,
-      y: -(mousePointTo.y - stage.getPointerPosition().y / newScale) * newScale,
-    });
+    setStagePos(newPos);
   };
 
 
@@ -1647,7 +1711,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         scaleY={stageScale}
         x={stagePos.x}
         y={stagePos.y}
-        draggable={activeTool === 'pan'}
+        draggable={activeTool === 'pan' && !isHeavyScene}
         onDragStart={(e) => {
           if (e.target === e.target.getStage()) {
             setIsPanning(true);
@@ -1664,6 +1728,43 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         onMouseDown={(e) => {
           const stage = e.target.getStage();
           if (!stage) return;
+          if (isHeavyScene && activeTool === 'pan') {
+            // Paneo manual: con Stage.draggable Konva invalida la transformación de todos los
+            // nodos en cada movimiento. Aquí solo se mueve la cámara virtual.
+            if (e.evt.button !== 0) return;
+            const fr = freezerRef.current;
+            fr.freeze(stage);
+            const start = { px: e.evt.clientX, py: e.evt.clientY, cam: { ...(pendingCameraRef.current ?? fr.camera) } };
+            setIsPanning(true);
+            const onMove = (ev: MouseEvent) => {
+              moveFrozenCamera(stage, {
+                scale: start.cam.scale,
+                x: start.cam.x + ev.clientX - start.px,
+                y: start.cam.y + ev.clientY - start.py,
+              });
+              if (cameraMaxWaitTimerRef.current === undefined) {
+                cameraMaxWaitTimerRef.current = window.setTimeout(commitFrozenCamera, 300);
+              }
+            };
+            const onUp = () => {
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+              setIsPanning(false);
+              commitFrozenCamera();
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+            return;
+          }
+          if (pendingCameraRef.current || freezerRef.current.isFrozen) {
+            // Las coordenadas del clic se calculan con la transformación del stage: ponerla al día
+            const cam = pendingCameraRef.current;
+            if (cam) {
+              stage.scale({ x: cam.scale, y: cam.scale });
+              stage.position({ x: cam.x, y: cam.y });
+            }
+            commitFrozenCamera();
+          }
           
           // Clic en el fondo del Stage para empezar la selección por área (solo en modo seleccionar)
           if (activeTool === 'select' && e.target === stage) {
