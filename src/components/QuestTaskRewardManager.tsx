@@ -899,6 +899,24 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                             />
                             <span>Coincidir NBT</span>
                           </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}
+                            title="Compara solo los datos NBT que la tarea define, ignorando los demás">
+                            <input
+                              type="checkbox"
+                              checked={!!task.weak_nbt_match}
+                              onChange={(e) => updateTaskField(tIdx, 'weak_nbt_match', e.target.checked ? true : undefined)}
+                            />
+                            <span>NBT parcial</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}
+                            title="El jugador solo puede entregar el ítem desde la pantalla de la tarea, no desde el inventario">
+                            <input
+                              type="checkbox"
+                              checked={!!task.task_screen_only}
+                              onChange={(e) => updateTaskField(tIdx, 'task_screen_only', e.target.checked ? true : undefined)}
+                            />
+                            <span>Solo desde pantalla de tarea</span>
+                          </label>
                         </div>
                       </div>
                     );
@@ -1277,6 +1295,16 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                       />
                     </div>
                   )}
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: '6px 0 0', fontSize: '0.74rem', color: 'var(--text-secondary)' }}
+                    title="La misión se puede completar sin cumplir esta tarea">
+                    <input
+                      type="checkbox"
+                      checked={!!task.optional_task}
+                      onChange={(e) => updateTaskField(tIdx, 'optional_task', e.target.checked ? true : undefined)}
+                    />
+                    <span>Tarea opcional</span>
+                  </label>
                 </div>
               );
             })}
