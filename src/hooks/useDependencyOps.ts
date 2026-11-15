@@ -1,6 +1,6 @@
 import React from 'react';
 
-export interface useDependencyOpsContext {
+export interface DependencyOpsContext {
   contextMenu: { visible: boolean; x: number; y: number; targetQuestId: string | null; };
   images: any[];
   quests: any[];
@@ -13,7 +13,7 @@ export interface useDependencyOpsContext {
   updateState: (newQuests: any[], newImages: any[], bypassHistory?: boolean, newSnbtData?: any) => void;
 }
 
-export function useDependencyOps({ contextMenu, images, quests, rawSelection, selection, setContextMenu, setSelection, showToast, updateQuest, updateState }: useDependencyOpsContext) {
+export function useDependencyOps({ contextMenu, images, quests, rawSelection, selection, setContextMenu, setSelection, showToast, updateQuest, updateState }: DependencyOpsContext) {
   const clearSelectedDependencies = () => {
     const selectedQuestIds = selection.items
       .filter(item => item.type === 'quest')
