@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Plus, Trash2, Copy, ChevronUp, ChevronDown, Settings, Search,
   Package, Tag, CheckCircle2, Swords, Compass, Trophy, Castle, Sparkles,
-  Gift, Terminal, Dices, Layers, Trees, ShieldAlert
+  Gift, Terminal, Dices, Layers, Trees, ShieldAlert,
+  Zap, Droplets, Eye, MapPin, BarChart3
 } from 'lucide-react';
 import type { RewardTable } from '../types/rewardTable';
 import { ItemTagPickerModal } from './ItemTagPickerModal';
@@ -26,6 +27,11 @@ interface QuestTaskRewardManagerProps {
   rewardTables?: RewardTable[];
   onOpenRewardTableModal?: () => void;
 }
+
+const numOf = (v: any, d = 0): number => (v && typeof v === 'object' ? (v.value ?? d) : (v ?? d));
+
+// Orden del enum ObserveType de FTB Quests 2001.x (se guarda como índice numérico)
+const OBSERVE_TYPES = ['Bloque', 'Tag de bloque', 'Estado de bloque', 'Block entity (NBT)', 'Tipo de block entity', 'Tipo de entidad', 'Tag de entidad'];
 
 function generateHexId(): string {
   return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16).toUpperCase()).join('');
@@ -152,6 +158,52 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
           id: newId,
           type: 'gamestage',
           stage: 'stage_one',
+        };
+        break;
+      case 'forge_energy':
+        newTask = {
+          id: newId,
+          type: 'forge_energy',
+          value: { __type: 'number', value: 100000, suffix: 'L' },
+          max_input: { __type: 'number', value: 1000, suffix: 'L' }
+        };
+        break;
+      case 'fluid':
+        newTask = {
+          id: newId,
+          type: 'fluid',
+          fluid: 'minecraft:water',
+          amount: { __type: 'number', value: 1000, suffix: 'L' }
+        };
+        break;
+      case 'observation':
+        newTask = {
+          id: newId,
+          type: 'observation',
+          observe_type: { __type: 'number', value: 0, suffix: '' },
+          to_observe: 'minecraft:stone',
+          timer: { __type: 'number', value: 0, suffix: 'L' }
+        };
+        break;
+      case 'location':
+        newTask = {
+          id: newId,
+          type: 'location',
+          dimension: 'minecraft:overworld',
+          x: { __type: 'number', value: 0, suffix: '' },
+          y: { __type: 'number', value: 64, suffix: '' },
+          z: { __type: 'number', value: 0, suffix: '' },
+          w: { __type: 'number', value: 1, suffix: '' },
+          h: { __type: 'number', value: 1, suffix: '' },
+          d: { __type: 'number', value: 1, suffix: '' }
+        };
+        break;
+      case 'stat':
+        newTask = {
+          id: newId,
+          type: 'stat',
+          stat: 'minecraft:jump',
+          value: { __type: 'number', value: 100, suffix: '' }
         };
         break;
       default:
@@ -306,6 +358,16 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
         return { icon: <Trees size={13} />, label: 'Bioma', color: '#a6e3a1', bg: 'rgba(166, 227, 161, 0.15)' };
       case 'gamestage':
         return { icon: <ShieldAlert size={13} />, label: 'GameStage', color: '#f5c2e7', bg: 'rgba(245, 194, 231, 0.15)' };
+      case 'forge_energy':
+        return { icon: <Zap size={13} />, label: 'Energía (FE)', color: '#f9e2af', bg: 'rgba(249, 226, 175, 0.15)' };
+      case 'fluid':
+        return { icon: <Droplets size={13} />, label: 'Fluido', color: '#89dceb', bg: 'rgba(137, 220, 235, 0.15)' };
+      case 'observation':
+        return { icon: <Eye size={13} />, label: 'Observación', color: '#b4befe', bg: 'rgba(180, 190, 254, 0.15)' };
+      case 'location':
+        return { icon: <MapPin size={13} />, label: 'Ubicación', color: '#eba0ac', bg: 'rgba(235, 160, 172, 0.15)' };
+      case 'stat':
+        return { icon: <BarChart3 size={13} />, label: 'Estadística', color: '#74c7ec', bg: 'rgba(116, 199, 236, 0.15)' };
       default:
         return { icon: <Layers size={13} />, label: type || 'Tarea', color: '#a6adc8', bg: 'rgba(166, 173, 200, 0.15)' };
     }
@@ -453,6 +515,41 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                   onClick={() => addTaskPreset('xp')}
                 >
                   <Sparkles size={14} style={{ color: '#94e2d5' }} /> 🔮 Nivel de XP Requerido
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('forge_energy')}
+                >
+                  <Zap size={14} style={{ color: '#f9e2af' }} /> ⚡ Energía (Forge Energy)
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('fluid')}
+                >
+                  <Droplets size={14} style={{ color: '#89dceb' }} /> 💧 Fluido
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('observation')}
+                >
+                  <Eye size={14} style={{ color: '#b4befe' }} /> 👁️ Observación
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('location')}
+                >
+                  <MapPin size={14} style={{ color: '#eba0ac' }} /> 📍 Ubicación (Coordenadas)
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ justifyContent: 'flex-start', padding: '6px 8px', fontSize: '0.78rem', gap: '8px' }}
+                  onClick={() => addTaskPreset('stat')}
+                >
+                  <BarChart3 size={14} style={{ color: '#74c7ec' }} /> 📊 Estadística
                 </button>
               </div>
             )}
@@ -1012,6 +1109,114 @@ export const QuestTaskRewardManager: React.FC<QuestTaskRewardManagerProps> = ({
                         placeholder="Título descriptivo opcional para el jugador"
                         onChange={(e) => updateTaskField(tIdx, 'title', e.target.value ? e.target.value : undefined)}
                       />
+                    </div>
+                  )}
+
+                  {task.type === 'forge_energy' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Energía requerida (FE):</label>
+                        <input type="number" className="input-field" style={{ width: '120px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.value)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'value', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: 'L' })} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Entrada máx. (FE/tick):</label>
+                        <input type="number" className="input-field" style={{ width: '100px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.max_input)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'max_input', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: 'L' })} />
+                      </div>
+                    </div>
+                  )}
+
+                  {task.type === 'fluid' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+                      <input type="text" className="input-field" style={{ width: '100%', minWidth: 0, fontSize: '0.8rem', padding: '5px 8px', boxSizing: 'border-box' }}
+                        value={task.fluid || ''} placeholder="Fluido (ej. minecraft:water)"
+                        onChange={(e) => updateTaskField(tIdx, 'fluid', e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Cantidad (mB):</label>
+                        <input type="number" className="input-field" style={{ width: '100px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.amount)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'amount', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: 'L' })} />
+                      </div>
+                      <input type="text" className="input-field" style={{ width: '100%', minWidth: 0, fontSize: '0.76rem', padding: '4px 8px', boxSizing: 'border-box' }}
+                        value={task.fluid_nbt || ''} placeholder="NBT del fluido (opcional)"
+                        onChange={(e) => updateTaskField(tIdx, 'fluid_nbt', e.target.value ? e.target.value : undefined)} />
+                    </div>
+                  )}
+
+                  {task.type === 'observation' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+                      <select className="input-field" style={{ width: '100%', fontSize: '0.78rem', padding: '3px 8px', height: '28px', boxSizing: 'border-box', cursor: 'pointer' }}
+                        value={numOf(task.observe_type)}
+                        onChange={(e) => updateTaskField(tIdx, 'observe_type', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })}>
+                        {OBSERVE_TYPES.map((o, i) => <option key={i} value={i}>{o}</option>)}
+                      </select>
+                      <input type="text" className="input-field" style={{ width: '100%', minWidth: 0, fontSize: '0.8rem', padding: '5px 8px', boxSizing: 'border-box' }}
+                        value={task.to_observe || ''} placeholder="Qué observar (ej. minecraft:spawner, minecraft:creeper)"
+                        onChange={(e) => updateTaskField(tIdx, 'to_observe', e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Tiempo (ticks):</label>
+                        <input type="number" className="input-field" style={{ width: '100px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.timer)} min={0}
+                          onChange={(e) => updateTaskField(tIdx, 'timer', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: 'L' })} />
+                      </div>
+                    </div>
+                  )}
+
+                  {task.type === 'location' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+                      <input type="text" className="input-field" style={{ width: '100%', minWidth: 0, fontSize: '0.8rem', padding: '5px 8px', boxSizing: 'border-box' }}
+                        value={task.dimension || ''} placeholder="Dimensión (ej. minecraft:overworld)"
+                        onChange={(e) => updateTaskField(tIdx, 'dimension', e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>X</label>
+                        <input type="number" className="input-field" style={{ width: '70px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.x)} 
+                          onChange={(e) => updateTaskField(tIdx, 'x', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Y</label>
+                        <input type="number" className="input-field" style={{ width: '70px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.y)} 
+                          onChange={(e) => updateTaskField(tIdx, 'y', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Z</label>
+                        <input type="number" className="input-field" style={{ width: '70px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.z)} 
+                          onChange={(e) => updateTaskField(tIdx, 'z', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Ancho (W)</label>
+                        <input type="number" className="input-field" style={{ width: '60px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.w)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'w', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Alto (H)</label>
+                        <input type="number" className="input-field" style={{ width: '60px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.h)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'h', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Prof. (D)</label>
+                        <input type="number" className="input-field" style={{ width: '60px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.d)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'd', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                        <input type="checkbox" checked={!!task.ignore_dimension}
+                          onChange={(e) => updateTaskField(tIdx, 'ignore_dimension', e.target.checked ? true : undefined)} />
+                        <span>Ignorar dimensión</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {task.type === 'stat' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', minWidth: 0 }}>
+                      <input type="text" className="input-field" style={{ width: '100%', minWidth: 0, fontSize: '0.8rem', padding: '5px 8px', boxSizing: 'border-box' }}
+                        value={task.stat || ''} placeholder="ID de la estadística (ej. minecraft:jump)"
+                        onChange={(e) => updateTaskField(tIdx, 'stat', e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Valor requerido:</label>
+                        <input type="number" className="input-field" style={{ width: '110px', fontSize: '0.8rem', padding: '3px 6px', textAlign: 'center' }}
+                          value={numOf(task.value)} min={1}
+                          onChange={(e) => updateTaskField(tIdx, 'value', { __type: 'number', value: parseInt(e.target.value) || 0, suffix: '' })} />
+                      </div>
                     </div>
                   )}
 
