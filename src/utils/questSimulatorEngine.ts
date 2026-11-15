@@ -11,6 +11,7 @@
  */
 
 import { tableIdToHex } from './tableId';
+import { numVal } from './snbt';
 import type { RewardTable } from '../types/rewardTable';
 
 export interface VirtualRewardGrant {
@@ -75,9 +76,8 @@ export function isQuestUnlocked(
 
   if (depIds.length === 0) return true;
 
-  const minRequired = typeof quest.min_required_dependencies === 'number' && quest.min_required_dependencies > 0
-    ? quest.min_required_dependencies
-    : depIds.length;
+  const minReq = numVal(quest.min_required_dependencies, 0);
+  const minRequired = minReq > 0 ? minReq : depIds.length;
 
   let satisfiedCount = 0;
   for (const depId of depIds) {
@@ -117,7 +117,7 @@ export function rollRewardTableItem(table: RewardTable): { item: any; count: num
 
   let totalWeight = 0;
   for (const r of rewards) {
-    const w = typeof r.weight === 'number' && r.weight > 0 ? r.weight : 1;
+    const w = numVal(r.weight, 1) > 0 ? numVal(r.weight, 1) : 1;
     totalWeight += w;
   }
 
@@ -125,9 +125,9 @@ export function rollRewardTableItem(table: RewardTable): { item: any; count: num
 
   let randomVal = Math.random() * totalWeight;
   for (const r of rewards) {
-    const w = typeof r.weight === 'number' && r.weight > 0 ? r.weight : 1;
+    const w = numVal(r.weight, 1) > 0 ? numVal(r.weight, 1) : 1;
     if (randomVal <= w) {
-      const count = typeof r.count === 'number' ? r.count : 1;
+      const count = numVal(r.count, 1);
       const title = r.title || (typeof r.item === 'string' ? r.item : r.item?.id || 'Recompensa');
       return { item: r.item, count, title };
     }
@@ -137,7 +137,7 @@ export function rollRewardTableItem(table: RewardTable): { item: any; count: num
   const fallback = rewards[0];
   return {
     item: fallback.item,
-    count: typeof fallback.count === 'number' ? fallback.count : 1,
+    count: numVal(fallback.count, 1),
     title: fallback.title || 'Recompensa',
   };
 }
@@ -173,7 +173,7 @@ export function completeQuestInSimulator(
       if (rewType === 'item') {
         const itemObj = rew.item;
         const itemId = typeof itemObj === 'string' ? itemObj : itemObj?.id || 'item_desconocido';
-        const count = typeof rew.count === 'number' ? rew.count : 1;
+        const count = numVal(rew.count, 1);
         const current = nextInventory[itemId] || { count: 0, icon: itemObj, title: rew.title || itemId };
         nextInventory[itemId] = {
           count: current.count + count,
@@ -182,17 +182,31 @@ export function completeQuestInSimulator(
         };
         grantedRewards.push({ type: 'item', id: itemId, item: itemObj, count, title: rew.title });
       } else if (rewType === 'xp') {
-        const xpAmount = typeof rew.xp === 'number' ? rew.xp : 100;
+        const xpAmount = numVal(rew.xp, 100);
         nextXp += xpAmount;
         grantedRewards.push({ type: 'xp', xp: xpAmount });
       } else if (rewType === 'xp_levels') {
-        const lvlAmount = typeof rew.xp_levels === 'number' ? rew.xp_levels : 1;
+        const lvlAmount = numVal(rew.xp_levels, 1);
         nextXpLevels += lvlAmount;
         grantedRewards.push({ type: 'xp_levels', xpLevels: lvlAmount });
+      } else if (['advancement', 'toast', 'gamestage', 'command', 'custom'].includes(rewType)) {
+        const detail = rew.advancement || rew.stage || rew.command || rew.title || '';
+        grantedRewards.push({ type: rewType, title: detail ? String(detail) : undefined });
       } else if (rewType === 'loot' || rewType === 'choice' || rewType === 'random' || rewType === 'all_table') {
         const tableId = normalizeQuestId(tableIdToHex(rew.table_id ?? rew.table));
         const matchedTable = rewardTables.find((t) => normalizeQuestId(t.id) === tableId);
-        if (matchedTable) {
+        if (matchedTable && rewType === 'all_table') {
+          // all_table entrega TODAS las entradas de la tabla
+          for (const entry of matchedTable.rewards || []) {
+            if ((entry.type || 'item') !== 'item') continue;
+            const itemId = typeof entry.item === 'string' ? entry.item : entry.item?.id || 'loot_item';
+            const count = numVal(entry.count, 1);
+            const title = entry.title || itemId;
+            const current = nextInventory[itemId] || { count: 0, icon: entry.item, title };
+            nextInventory[itemId] = { count: current.count + count, icon: entry.item, title };
+            grantedRewards.push({ type: 'loot', tableName: matchedTable.title || tableId, item: entry.item, count, title });
+          }
+        } else if (matchedTable) {
           const rolled = rollRewardTableItem(matchedTable);
           if (rolled) {
             const itemId = typeof rolled.item === 'string' ? rolled.item : rolled.item?.id || 'loot_item';

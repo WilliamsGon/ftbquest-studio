@@ -166,3 +166,11 @@ export function stringifySNBT(obj: any, indentLevel = 0): string {
   
   return String(obj);
 }
+
+/** Valor numérico de un campo del SNBT, sea número plano o `{ __type: 'number', value }`. */
+export function numVal(v: any, fallback = NaN): number {
+  if (v && typeof v === 'object' && v.__type === 'number') return Number(v.value);
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) return Number(v);
+  return fallback;
+}
