@@ -2,13 +2,12 @@ import type React from 'react';
 
 
 export interface NbtEditorModalProps {
-  JSON: JSON;
   nbtEditor: { title: string; value: string; onSave: (val: any) => void; } | null;
   setNbtEditor: React.Dispatch<React.SetStateAction<{ title: string; value: string; onSave: (val: any) => void; } | null>>;
   showToast: (message: string, type?: string) => void;
 }
 
-export function NbtEditorModal({ JSON, nbtEditor, setNbtEditor, showToast }: NbtEditorModalProps) {
+export function NbtEditorModal({ nbtEditor, setNbtEditor, showToast }: NbtEditorModalProps) {
   return (
     <>
       {nbtEditor && (

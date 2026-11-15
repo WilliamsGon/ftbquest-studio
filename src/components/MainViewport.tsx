@@ -7,7 +7,6 @@ import { EditorCanvas } from './EditorCanvas';
 import { TableView } from './TableView';
 
 export interface MainViewportProps {
-  JSON: JSON;
   activeTabId: string;
   connectionLineStyle: "bezier" | "straight" | "orthogonal";
   currentCameraRef: React.RefObject<{ pos?: { x: number; y: number; } | undefined; scale: number; }>;
@@ -56,7 +55,7 @@ export interface MainViewportProps {
   visibleZLevels: number[];
 }
 
-export function MainViewport({ JSON, activeTabId, connectionLineStyle, currentCameraRef, fileInputRef, graphValidation, handleAutoLayout, handleBatchReplace, handleCloseTab, handleCompleteAllPlayerQuests, handleConnectQuests, handleConnectionLineStyleChange, handleExport, handleExportAll, handleExportZip, handleNewBlankTab, handleQuestContextMenu, handleReplaceSingle, handleResetPlayerProgress, handleSelectTab, handleTogglePlayerQuestCompletion, images, isPinnedDrawerOpen, isPlayerMode, layers, lockedKeys, mouseCanvasPosRef, pinnedAssets, playerCompletedQuestIds, quests, selection, setIsPinnedDrawerOpen, setIsPlayerMode, setIsSimulatorModalOpen, setNbtEditor, setSelection, setSnapMode, setSnapToGrid, snapMode, snapToGrid, snbtData, tabs, updateImage, updateQuest, updateQuestsAndImages, viewMode, visibleZLevels }: MainViewportProps) {
+export function MainViewport({ activeTabId, connectionLineStyle, currentCameraRef, fileInputRef, graphValidation, handleAutoLayout, handleBatchReplace, handleCloseTab, handleCompleteAllPlayerQuests, handleConnectQuests, handleConnectionLineStyleChange, handleExport, handleExportAll, handleExportZip, handleNewBlankTab, handleQuestContextMenu, handleReplaceSingle, handleResetPlayerProgress, handleSelectTab, handleTogglePlayerQuestCompletion, images, isPinnedDrawerOpen, isPlayerMode, layers, lockedKeys, mouseCanvasPosRef, pinnedAssets, playerCompletedQuestIds, quests, selection, setIsPinnedDrawerOpen, setIsPlayerMode, setIsSimulatorModalOpen, setNbtEditor, setSelection, setSnapMode, setSnapToGrid, snapMode, snapToGrid, snbtData, tabs, updateImage, updateQuest, updateQuestsAndImages, viewMode, visibleZLevels }: MainViewportProps) {
   return (
     <>
       <div className="main-viewport-column">
