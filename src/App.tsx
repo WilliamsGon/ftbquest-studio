@@ -7,10 +7,6 @@ import { ChapterGroupModal } from './components/ChapterGroupModal';
 import { CommandGeneratorModal } from './components/CommandGeneratorModal';
 import { CrossChapterDependencyModal } from './components/CrossChapterDependencyModal';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
-import { alignItems, distributeItems } from './utils/selectionOps';
-import type { AlignType } from './utils/selectionOps';
-import { createReplacer } from './utils/batchReplace';
-import type { ReplaceFields } from './utils/batchReplace';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainViewport } from './components/MainViewport';
@@ -26,25 +22,26 @@ import { RewardTableModal } from './components/RewardTableModal';
 import { TexturePickerModal } from './components/TexturePickerModal';
 import { ToastContainer } from './components/ToastContainer';
 import { TranslationManagerModal } from './components/TranslationManagerModal';
+import { useDependencyOps } from './hooks/useDependencyOps';
+import { usePlayerSimulator } from './hooks/usePlayerSimulator';
+import { useQuestLibrary } from './hooks/useQuestLibrary';
+import { useRightSidebar } from './hooks/useRightSidebar';
+import { useToasts } from './hooks/useToasts';
 import type { Blueprint, BlueprintCategory } from './types/blueprints';
 import type { ChapterTab } from './types/chapter';
-import type { ChapterGroup } from './types/chapterGroup';
 import type { TranslationEntry } from './types/i18n';
-import type { RewardTable } from './types/rewardTable';
 import { generateHexId, getDValue } from './utils/appHelpers';
 import { computeAutoLayout } from './utils/autoLayout';
+import type { ReplaceFields } from './utils/batchReplace';
+import { createReplacer } from './utils/batchReplace';
 import { instantiateBlueprint, saveCustomBlueprint } from './utils/blueprintEngine';
 import { isFolderAccessSupported, pickQuestFolder, readQuestFolder, resolveQuestsDir, writeQuestFiles } from './utils/folderAccess';
 import { validateQuestGraph } from './utils/graphValidation';
 import { applyI18nKeysToChapters } from './utils/i18nManager';
 import type { ClassifiedFile } from './utils/questBook';
 import { classifyQuestFiles, readQuestExtras } from './utils/questBook';
-import {
-type SimulatorState,
-completeQuestInSimulator,
-computeUnlockedQuests,
-createInitialSimulatorState
-} from './utils/questSimulatorEngine';
+import type { AlignType } from './utils/selectionOps';
+import { alignItems, distributeItems } from './utils/selectionOps';
 import { parseSNBT, stringifySNBT } from './utils/snbt';
 import { buildModpackFiles, exportModpackToZip } from './utils/zipExporter';
 
@@ -63,64 +60,25 @@ function App() {
   const currentCameraRef = useRef<{ pos?: { x: number; y: number }; scale: number }>({ pos: undefined, scale: 1 });
 
   // Gestor de Tablas de Recompensas (reward_tables / Loot Crates)
-  const [rewardTables, setRewardTables] = useState<RewardTable[]>(() => {
-    try {
-      const stored = localStorage.getItem('ftb_reward_tables');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error('Error loading reward tables from localStorage:', e);
-    }
-    return [
-      {
-        id: '2B1C94A7E0182C3D',
-        title: 'Recompensas Básicas',
-        icon: 'minecraft:chest',
-        empty_weight: 0,
-        loot_size: 1,
-        order_index: 0,
-        rewards: [
-          { item: 'minecraft:iron_ingot', count: 4, weight: 10.0 },
-          { item: 'minecraft:gold_ingot', count: 2, weight: 5.0 },
-          { item: 'minecraft:diamond', count: 1, weight: 1.0 },
-          { item: 'minecraft:bread', count: 8, weight: 15.0 },
-        ],
-        loot_crate: {
-          string_id: 'basic_crate',
-          color: 0x55ff55,
-          glow: true,
-        },
-      }
-    ];
-  });
+  const {
+    rewardTables, handleUpdateRewardTables,
+    chapterGroups, handleUpdateChapterGroups,
+    questBookData, handleUpdateQuestBook,
+    pinnedAssets, savePinnedAssets,
+  } = useQuestLibrary();
+  const {
+    rightSidebarWidth, setRightSidebarWidth,
+    isRightSidebarCollapsed, setIsRightSidebarCollapsed,
+    isResizingRightSidebar, startResizingRightSidebar,
+  } = useRightSidebar();
+  const { toasts, showToast } = useToasts();
   const [isRewardTableModalOpen, setIsRewardTableModalOpen] = useState<boolean>(false);
   const [isCrossChapterModalOpen, setIsCrossChapterModalOpen] = useState<boolean>(false);
 
   // Gestor de Grupos de Capítulos (chapter_groups.snbt)
-  const [chapterGroups, setChapterGroups] = useState<ChapterGroup[]>(() => {
-    try {
-      const stored = localStorage.getItem('ftb_chapter_groups');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error('Error loading chapter groups from localStorage:', e);
-    }
-    return [
-      { id: '7E48F1A2D091B3C4', title: 'Tutorial / Inicio' },
-      { id: '3A92F5C8E104D6B7', title: 'Tecnología' },
-      { id: '1B83D4E7F209A5C6', title: 'Magia y Dimensiones' },
-    ];
-  });
   const [isChapterGroupModalOpen, setIsChapterGroupModalOpen] = useState<boolean>(false);
 
   // Ajustes globales del libro de misiones (data.snbt)
-  const [questBookData, setQuestBookData] = useState<any | null>(() => {
-    try {
-      const stored = localStorage.getItem('ftb_quest_book_data');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.error('Error loading quest book data from localStorage:', e);
-    }
-    return null;
-  });
   const [isQuestBookModalOpen, setIsQuestBookModalOpen] = useState<boolean>(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState<boolean>(false);
@@ -132,10 +90,14 @@ function App() {
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Modo Vista Jugador / Simulador de Progresión
-  const [isPlayerMode, setIsPlayerMode] = useState<boolean>(false);
-  const [playerCompletedQuestIds, setPlayerCompletedQuestIds] = useState<Set<string>>(new Set());
-  const [isSimulatorModalOpen, setIsSimulatorModalOpen] = useState<boolean>(false);
-  const [simulatorState, setSimulatorState] = useState<SimulatorState>(() => createInitialSimulatorState([]));
+
+  const {
+    isPlayerMode, setIsPlayerMode,
+    playerCompletedQuestIds,
+    isSimulatorModalOpen, setIsSimulatorModalOpen,
+    simulatorState,
+    handleTogglePlayerQuestCompletion, handleResetPlayerProgress, handleCompleteAllPlayerQuests,
+  } = usePlayerSimulator(quests, rewardTables, showToast);
 
   // Estados de Modales Adicionales: Doctor, Comandos y Editor de Texto Enriquecido
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState<boolean>(false);
@@ -154,13 +116,6 @@ function App() {
     onSave: () => {}
   });
 
-  // Sincronizar misiones desbloqueadas en el simulador cuando cambia el set de misiones
-  useEffect(() => {
-    setSimulatorState(prev => ({
-      ...prev,
-      unlockedQuestIds: computeUnlockedQuests(quests, prev.completedQuestIds)
-    }));
-  }, [quests]);
 
   // Niveles Z (order) únicos presentes en las imágenes de fondo
   const availableZLevels = useMemo(() => {
@@ -223,84 +178,8 @@ function App() {
   // Validación de grafos de dependencias en tiempo real (reconociendo dependencias inter-capítulo)
   const graphValidation = useMemo(() => validateQuestGraph(quests, allKnownQuestIds), [quests, allKnownQuestIds]);
 
-  const [pinnedAssets, setPinnedAssets] = useState<any[]>(() => {
-    try {
-      const stored = localStorage.getItem('ftb_quest_pinned_assets');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
   const [isPinnedDrawerOpen, setIsPinnedDrawerOpen] = useState<boolean>(false);
-  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
-    const saved = localStorage.getItem('ftb_right_sidebar_width');
-    const parsed = saved ? parseInt(saved, 10) : 320;
-    return isNaN(parsed) || parsed < 260 ? 320 : parsed;
-  });
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState<boolean>(false);
-  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState<boolean>(false);
 
-  const startResizingRightSidebar = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingRightSidebar(true);
-  };
-
-  useEffect(() => {
-    if (!isResizingRightSidebar) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const calculatedWidth = window.innerWidth - e.clientX;
-      const minW = 280;
-      const maxW = Math.min(850, Math.floor(window.innerWidth * 0.65));
-      const clampedWidth = Math.max(minW, Math.min(maxW, calculatedWidth));
-      setRightSidebarWidth(clampedWidth);
-      localStorage.setItem('ftb_right_sidebar_width', String(Math.round(clampedWidth)));
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingRightSidebar(false);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizingRightSidebar]);
-
-  const [toasts, setToasts] = useState<{ id: string; message: string; type: string }[]>([]);
-  
-  const showToast = (message: string, type = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
-  };
-
-  const savePinnedAssets = (assets: any[]) => {
-    setPinnedAssets(assets);
-    try {
-      localStorage.setItem('ftb_quest_pinned_assets', JSON.stringify(assets));
-    } catch (e) {
-      console.error('Error saving pinned assets:', e);
-    }
-  };
-
-  const handleUpdateRewardTables = (newTables: RewardTable[]) => {
-    setRewardTables(newTables);
-    try {
-      localStorage.setItem('ftb_reward_tables', JSON.stringify(newTables));
-    } catch (e) {
-      console.error('Error saving reward tables:', e);
-    }
-  };
 
   const handleInsertBlueprint = (bp: Blueprint) => {
     if (!snbtData) {
@@ -372,55 +251,6 @@ function App() {
     showToast('Textos convertidos a claves I18n {clave} y sincronizados en el modpack', 'success');
   };
 
-  const handleUpdateQuestBook = (newData: any) => {
-    setQuestBookData(newData);
-    try {
-      localStorage.setItem('ftb_quest_book_data', JSON.stringify(newData));
-    } catch (e) {
-      console.error('Error saving quest book data:', e);
-    }
-  };
-
-  const handleUpdateChapterGroups = (newGroups: ChapterGroup[]) => {
-    setChapterGroups(newGroups);
-    try {
-      localStorage.setItem('ftb_chapter_groups', JSON.stringify(newGroups));
-    } catch (e) {
-      console.error('Error saving chapter groups:', e);
-    }
-  };
-
-  const handleTogglePlayerQuestCompletion = (questId: string) => {
-    setSimulatorState(prev => {
-      const next = completeQuestInSimulator(questId, prev, quests, rewardTables);
-      setPlayerCompletedQuestIds(next.completedQuestIds);
-      if (next.completedQuestIds.has(questId.toUpperCase())) {
-        showToast('¡Misión completada! Desbloqueando ramas y recibiendo recompensas...', 'success');
-      } else {
-        showToast('Misión marcada como pendiente (reversión)', 'info');
-      }
-      return next;
-    });
-  };
-
-  const handleResetPlayerProgress = () => {
-    const next = createInitialSimulatorState(quests);
-    setSimulatorState(next);
-    setPlayerCompletedQuestIds(next.completedQuestIds);
-    showToast('Progreso del simulador reiniciado a cero', 'info');
-  };
-
-  const handleCompleteAllPlayerQuests = () => {
-    let current = simulatorState;
-    for (const q of quests) {
-      if (current.unlockedQuestIds.has(String(q.id).toUpperCase())) {
-        current = completeQuestInSimulator(String(q.id), current, quests, rewardTables);
-      }
-    }
-    setSimulatorState(current);
-    setPlayerCompletedQuestIds(current.completedQuestIds);
-    showToast('Misiones desbloqueadas completadas en lote', 'success');
-  };
 
   // Sincronizar niveles Z visibles cuando cambian los disponibles
   useEffect(() => {
@@ -1556,60 +1386,6 @@ function App() {
     showToast(`¡Se ha pegado con éxito el activo "${asset.title}"!`, 'success');
   };
 
-  const clearSelectedDependencies = () => {
-    const selectedQuestIds = selection.items
-      .filter(item => item.type === 'quest')
-      .map(item => item.id as string);
-
-    if (selectedQuestIds.length === 0) return;
-
-    const newQuests = quests.map(q => {
-      let isModified = false;
-      const qCopy = { ...q };
-
-      // Eliminar dependencias salientes si es una misión seleccionada
-      if (selectedQuestIds.includes(q.id)) {
-        if (qCopy.dependencies !== undefined) {
-          delete qCopy.dependencies;
-          isModified = true;
-        }
-        if (qCopy.dependency !== undefined) {
-          delete qCopy.dependency;
-          isModified = true;
-        }
-      }
-
-      // Eliminar dependencias entrantes que coincidan con las misiones seleccionadas
-      if (qCopy.dependencies) {
-        if (Array.isArray(qCopy.dependencies)) {
-          const filtered = qCopy.dependencies.filter((dep: any) => {
-            const depId = typeof dep === 'object' ? dep.value : dep;
-            return !selectedQuestIds.includes(depId);
-          });
-          if (filtered.length !== qCopy.dependencies.length) {
-            qCopy.dependencies = filtered.length > 0 ? filtered : undefined;
-            isModified = true;
-          }
-        } else {
-          const depId = typeof qCopy.dependencies === 'object' ? qCopy.dependencies.value : qCopy.dependencies;
-          if (selectedQuestIds.includes(depId)) {
-            qCopy.dependencies = undefined;
-            isModified = true;
-          }
-        }
-      }
-
-      // Limpieza final de campos vacíos
-      if (qCopy.dependencies === undefined) {
-        delete qCopy.dependencies;
-      }
-
-      return isModified ? qCopy : q;
-    });
-
-    updateState(newQuests, images);
-    showToast(`Dependencias eliminadas para ${selectedQuestIds.length} misión(es).`, 'success');
-  };
 
   const handleExport = () => {
     if (!snbtData) return;
@@ -1863,85 +1639,6 @@ function App() {
     });
   };
 
-  const handleConnectQuests = (sourceId: string, targetId: string) => {
-    const targetQ = quests.find(q => q.id === targetId);
-    if (!targetQ) return;
-
-    const currentDeps = Array.isArray(targetQ.dependencies)
-      ? [...targetQ.dependencies]
-      : (targetQ.dependencies ? [targetQ.dependencies] : []);
-
-    const normalizedDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
-
-    let newDeps: any[];
-    if (normalizedDeps.includes(sourceId)) {
-      newDeps = currentDeps.filter(d => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
-      showToast(`Dependencia eliminada: ${sourceId} ➔ ${targetId}`, 'info');
-    } else {
-      newDeps = [...currentDeps, sourceId];
-      showToast(`Dependencia creada: ${sourceId} ➔ ${targetId}`, 'success');
-    }
-
-    updateQuest(targetId, { dependencies: newDeps.length > 0 ? newDeps : undefined });
-  };
-
-  const invertSelectedDependency = () => {
-    if (selection.type !== 'dependency' || !selection.dependency) return;
-    const { sourceId, targetId } = selection.dependency;
-
-    const nextQuests = quests.map(q => {
-      if (q.id === targetId) {
-        const curDeps = Array.isArray(q.dependencies) ? q.dependencies : (q.dependencies ? [q.dependencies] : []);
-        const filtered = curDeps.filter((d: any) => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
-        return {
-          ...q,
-          dependencies: filtered.length > 0 ? filtered : undefined
-        };
-      }
-      if (q.id === sourceId) {
-        const curDeps = Array.isArray(q.dependencies) ? [...q.dependencies] : (q.dependencies ? [q.dependencies] : []);
-        const strDeps = curDeps.map((d: any) => typeof d === 'object' && d !== null ? d.id : String(d));
-        if (!strDeps.includes(targetId)) {
-          curDeps.push(targetId);
-        }
-        return {
-          ...q,
-          dependencies: curDeps
-        };
-      }
-      return q;
-    });
-
-    updateState(nextQuests, images);
-    setSelection({
-      type: 'dependency',
-      ids: [`${targetId}->${sourceId}`],
-      items: [],
-      dependency: { sourceId: targetId, targetId: sourceId }
-    });
-    showToast(`Dirección invertida: ${targetId} ➔ ${sourceId}`, 'info');
-  };
-
-  const deleteSelectedDependency = () => {
-    if (selection.type !== 'dependency' || !selection.dependency) return;
-    const { sourceId, targetId } = selection.dependency;
-
-    const nextQuests = quests.map(q => {
-      if (q.id === targetId) {
-        const curDeps = Array.isArray(q.dependencies) ? q.dependencies : (q.dependencies ? [q.dependencies] : []);
-        const filtered = curDeps.filter((d: any) => (typeof d === 'object' && d !== null ? d.id : String(d)) !== sourceId);
-        return {
-          ...q,
-          dependencies: filtered.length > 0 ? filtered : undefined
-        };
-      }
-      return q;
-    });
-
-    updateState(nextQuests, images);
-    setSelection({ type: null, ids: [], items: [] });
-    showToast(`Dependencia eliminada: ${sourceId} ➔ ${targetId}`, 'info');
-  };
 
   const handleBatchReplace = (
     searchQuery: string,
@@ -2019,126 +1716,8 @@ function App() {
     showToast(`Coincidencia reemplazada en "${getDValue(qCloned.title) || targetQId}"`, 'success');
   };
 
-  const makeSelectedDependOnTarget = () => {
-    if (!contextMenu.targetQuestId) return;
-    const targetId = contextMenu.targetQuestId;
-    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
-    if (selectedIds.length === 0) return;
 
-    const nextQuests = quests.map(q => {
-      if (selectedIds.includes(q.id) && q.id !== targetId) {
-        const currentDeps = Array.isArray(q.dependencies) 
-          ? [...q.dependencies] 
-          : (q.dependencies ? [q.dependencies] : []);
-        
-        const stringDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
-        if (!stringDeps.includes(targetId)) {
-          return {
-            ...q,
-            dependencies: [...currentDeps, targetId]
-          };
-        }
-      }
-      return q;
-    });
-    updateState(nextQuests, images);
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  const removeSelectedDependencyOnTarget = () => {
-    if (!contextMenu.targetQuestId) return;
-    const targetId = contextMenu.targetQuestId;
-    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
-    if (selectedIds.length === 0) return;
-
-    const nextQuests = quests.map(q => {
-      if (selectedIds.includes(q.id)) {
-        const currentDeps = Array.isArray(q.dependencies) 
-          ? [...q.dependencies] 
-          : (q.dependencies ? [q.dependencies] : []);
-        
-        const filteredDeps = currentDeps.filter(d => {
-          const dId = typeof d === 'object' && d !== null ? d.id : String(d);
-          return dId !== targetId;
-        });
-
-        const updatedQuest = {
-          ...q,
-          dependencies: filteredDeps.length > 0 ? filteredDeps : undefined
-        };
-        if (updatedQuest.dependencies === undefined) {
-          delete updatedQuest.dependencies;
-        }
-        return updatedQuest;
-      }
-      return q;
-    });
-    updateState(nextQuests, images);
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  const makeTargetDependOnSelected = () => {
-    if (!contextMenu.targetQuestId) return;
-    const targetId = contextMenu.targetQuestId;
-    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
-    if (selectedIds.length === 0) return;
-
-    const nextQuests = quests.map(q => {
-      if (q.id === targetId) {
-        const currentDeps = Array.isArray(q.dependencies) 
-          ? [...q.dependencies] 
-          : (q.dependencies ? [q.dependencies] : []);
-        
-        const stringDeps = currentDeps.map(d => typeof d === 'object' && d !== null ? d.id : String(d));
-        const newDeps = [...currentDeps];
-        selectedIds.forEach(id => {
-          if (id !== targetId && !stringDeps.includes(id)) {
-            newDeps.push(id);
-          }
-        });
-
-        return {
-          ...q,
-          dependencies: newDeps
-        };
-      }
-      return q;
-    });
-    updateState(nextQuests, images);
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  const removeTargetDependencyOnSelected = () => {
-    if (!contextMenu.targetQuestId) return;
-    const targetId = contextMenu.targetQuestId;
-    const selectedIds = rawSelection.items.filter(i => i.type === 'quest').map(i => i.id as string);
-    if (selectedIds.length === 0) return;
-
-    const nextQuests = quests.map(q => {
-      if (q.id === targetId) {
-        const currentDeps = Array.isArray(q.dependencies) 
-          ? [...q.dependencies] 
-          : (q.dependencies ? [q.dependencies] : []);
-        
-        const filteredDeps = currentDeps.filter(d => {
-          const dId = typeof d === 'object' && d !== null ? d.id : String(d);
-          return !selectedIds.includes(dId);
-        });
-
-        const updatedQuest = {
-          ...q,
-          dependencies: filteredDeps.length > 0 ? filteredDeps : undefined
-        };
-        if (updatedQuest.dependencies === undefined) {
-          delete updatedQuest.dependencies;
-        }
-        return updatedQuest;
-      }
-      return q;
-    });
-    updateState(nextQuests, images);
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
+  const { clearSelectedDependencies, handleConnectQuests, invertSelectedDependency, deleteSelectedDependency, makeSelectedDependOnTarget, removeSelectedDependencyOnTarget, makeTargetDependOnSelected, removeTargetDependencyOnSelected } = useDependencyOps({ contextMenu, images, quests, rawSelection, selection, setContextMenu, setSelection, showToast, updateQuest, updateState });
 
   const deleteQuest = (id: string) => {
     const nextQuests = quests.filter(q => q.id !== id);
