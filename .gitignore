@@ -22,7 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-#public/textures/
+# Texturas de Minecraft y mods (copyright de Mojang y autores): se generan con npm run extract-textures
+public/textures/
 Quest/
 # Material de referencia externo (quests de otros modpacks y JAR de mods, All Rights Reserved)
 recursos-externos/

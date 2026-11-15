@@ -75,7 +75,7 @@ Los capítulos viven solo en memoria hasta que los exportas. Se guardan en `loca
 
 El editor lee las texturas desde `public/textures/` y un índice `textures-index.json`. Si no se encuentra una textura se muestra un círculo gris de reserva.
 
-> ⚠️ El repositorio actualmente **incluye** `public/textures` (≈29 000 PNG, ~81 MB de Vanilla y mods). Las texturas pertenecen a Mojang y a los autores de cada mod; considera ignorarlas en `.gitignore` (hay una línea `#public/textures/` comentada) y generarlas localmente.
+> ℹ️ `public/textures/` **no se versiona** (están en `.gitignore`): las texturas pertenecen a Mojang y a los autores de cada mod. Hay que generarlas en local con el extractor. Sin ellas el editor funciona, pero muestra círculos grises; la versión publicada en GitHub Pages tampoco las incluye.
 
 ### Regenerarlas con el extractor
 ```bash
@@ -121,7 +121,7 @@ npm run preview   # previsualizar el build
 ```
 ├── .github/workflows/deploy.yml   # Despliegue a GitHub Pages
 ├── scripts/extract-textures.js    # Extrae texturas de .jar y genera textures-index.json
-├── public/textures/               # Texturas extraídas + textures-index.json
+├── public/textures/               # Texturas extraídas + textures-index.json (no versionado)
 └── src/
     ├── App.tsx                    # Estado global: pestañas, historial, portapapeles, atajos, paneles, import/export
     ├── components/
