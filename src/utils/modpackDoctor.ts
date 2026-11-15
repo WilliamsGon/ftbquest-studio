@@ -12,6 +12,7 @@
  */
 
 import { tableIdToHex } from './tableId';
+import { numVal } from './snbt';
 import type { RewardTable } from '../types/rewardTable';
 import { normalizeQuestId } from './questSimulatorEngine';
 
@@ -109,37 +110,51 @@ export function runModpackDiagnosis(
       tasks.forEach((task, idx) => {
         const taskType = task.type || 'item';
 
-        // Tarea de ítem sin ítem configurado
-        if (taskType === 'item') {
-          if (!task.item || task.item === '') {
-            issues.push({
-              id: `issue_empty_item_task_${qId}_${idx}`,
-              severity: 'error',
-              category: 'invalid_task',
-              title: `Tarea #${idx + 1} de ítem vacía`,
-              description: 'La tarea requiere un ítem pero no tiene ningún ID o tag asignado.',
-              questId: qId,
-              questTitle: qTitle,
-              chapterTitle,
-              fixable: false,
-            });
-          }
+        const push = (key: string, severity: IssueSeverity, title: string, description: string, fixable = false, fixType?: ModpackIssue['fixType']) =>
+          issues.push({
+            id: `issue_${key}_${qId}_${idx}`, severity, category: 'invalid_task',
+            title, description, questId: qId, questTitle: qTitle, chapterTitle, fixable, fixType,
+          });
+        const isEmpty = (v: any) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+        const nonPositive = (v: any) => { const n = numVal(v); return !isNaN(n) && n <= 0; };
+        const n = idx + 1;
 
-          // Cantidad menor o igual a cero
-          if (task.count !== undefined && (typeof task.count !== 'number' || task.count <= 0)) {
-            issues.push({
-              id: `issue_task_count_${qId}_${idx}`,
-              severity: 'error',
-              category: 'invalid_task',
-              title: `Cantidad inválida en tarea #${idx + 1}`,
-              description: `La cantidad requerida es "${task.count}", lo cual es <= 0 o inválido.`,
-              questId: qId,
-              questTitle: qTitle,
-              chapterTitle,
-              fixable: true,
-              fixType: 'fix_task_count',
-            });
-          }
+        switch (taskType) {
+          case 'item':
+            if (isEmpty(task.item)) {
+              push('empty_item_task', 'error', `Tarea #${n} de ítem vacía`, 'La tarea requiere un ítem pero no tiene ningún ID o tag asignado.');
+            }
+            if (task.count !== undefined && isNaN(numVal(task.count))) {
+              push('task_count', 'error', `Cantidad inválida en tarea #${n}`, `La cantidad requerida es "${String(task.count)}", que no es un número.`, true, 'fix_task_count');
+            } else if (nonPositive(task.count)) {
+              push('task_count', 'error', `Cantidad inválida en tarea #${n}`, `La cantidad requerida es "${numVal(task.count)}", lo cual es <= 0.`, true, 'fix_task_count');
+            }
+            break;
+          case 'fluid':
+            if (isEmpty(task.fluid)) push('empty_fluid', 'error', `Tarea #${n} de fluido vacía`, 'La tarea no tiene ningún fluido asignado.');
+            if (nonPositive(task.amount)) push('fluid_amount', 'error', `Cantidad de fluido inválida en tarea #${n}`, 'La cantidad (mB) debe ser mayor que 0.');
+            break;
+          case 'forge_energy':
+            if (nonPositive(task.value)) push('fe_value', 'error', `Energía requerida inválida en tarea #${n}`, 'El valor de FE debe ser mayor que 0.');
+            break;
+          case 'stat':
+            if (isEmpty(task.stat)) push('empty_stat', 'error', `Tarea #${n} de estadística sin estadística`, 'No se indicó el ID de la estadística (ej. minecraft:jump).');
+            if (nonPositive(task.value)) push('stat_value', 'warning', `Valor de estadística <= 0 en tarea #${n}`, 'La tarea se completaría de inmediato.');
+            break;
+          case 'advancement':
+            if (isEmpty(task.advancement)) push('empty_adv', 'error', `Tarea #${n} de logro sin logro`, 'No se indicó el ID del logro (advancement).');
+            break;
+          case 'dimension':
+            if (isEmpty(task.dimension)) push('empty_dim', 'error', `Tarea #${n} de dimensión sin dimensión`, 'No se indicó la dimensión (ej. minecraft:the_nether).');
+            break;
+          case 'observation':
+            if (isEmpty(task.to_observe)) push('empty_obs', 'error', `Tarea #${n} de observación sin objetivo`, 'No se indicó qué hay que observar (bloque, entidad o tag).');
+            break;
+          case 'location':
+            if (isEmpty(task.dimension) && task.ignore_dimension !== true && task.ignore_dimension?.value !== 1) {
+              push('loc_dim', 'warning', `Tarea #${n} de ubicación sin dimensión`, 'No hay dimensión y no se ignora la dimensión: puede no cumplirse nunca.');
+            }
+            break;
         }
       });
     }
@@ -148,6 +163,22 @@ export function runModpackDiagnosis(
     const rewards: any[] = quest.rewards || [];
     rewards.forEach((rew, idx) => {
       const rewType = rew.type || 'item';
+
+      const rIssue = (key: string, severity: IssueSeverity, title: string, description: string) =>
+        issues.push({
+          id: `issue_${key}_${qId}_${idx}`, severity, category: 'broken_reward',
+          title, description, questId: qId, questTitle: qTitle, chapterTitle, fixable: false,
+        });
+      const rEmpty = (v: any) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+      if (rewType === 'command' && rEmpty(rew.command)) rIssue('empty_cmd', 'error', `Recompensa #${idx + 1} de comando vacía`, 'No se indicó ningún comando.');
+      if (rewType === 'advancement' && rEmpty(rew.advancement)) rIssue('empty_adv_r', 'error', `Recompensa #${idx + 1} de logro vacía`, 'No se indicó el ID del logro.');
+      if (rewType === 'gamestage' && rEmpty(rew.stage)) rIssue('empty_stage', 'warning', `Recompensa #${idx + 1} de gamestage vacía`, 'No se indicó el gamestage a conceder.');
+      if ((rewType === 'xp' || rewType === 'xp_levels') && numVal(rew[rewType]) <= 0) {
+        rIssue('xp_zero', 'warning', `Recompensa #${idx + 1} de XP en 0`, 'La cantidad de experiencia es <= 0.');
+      }
+      if (rewType === 'item' && numVal(rew.count) <= 0) {
+        rIssue('reward_count', 'warning', `Cantidad <= 0 en recompensa #${idx + 1}`, 'La recompensa de ítem entregaría 0 unidades.');
+      }
 
       if (rewType === 'item' && (!rew.item || rew.item === '')) {
         issues.push({
@@ -181,7 +212,7 @@ export function runModpackDiagnosis(
         }
       }
 
-      if (rew.weight !== undefined && rew.weight <= 0) {
+      if (rew.weight !== undefined && numVal(rew.weight) <= 0) {
         issues.push({
           id: `issue_zero_chance_${qId}_${idx}`,
           severity: 'warning',
@@ -272,7 +303,7 @@ export function applyDoctorBatchAutoFix(
         let changed = false;
         if (Array.isArray(targetQuest.tasks)) {
           targetQuest.tasks = targetQuest.tasks.map((t: any) => {
-            if (t.count !== undefined && (typeof t.count !== 'number' || t.count <= 0)) {
+            if (t.count !== undefined && !(numVal(t.count) > 0)) {
               changed = true;
               return { ...t, count: 1 };
             }
@@ -320,7 +351,7 @@ export function applyDoctorBatchAutoFix(
         if (Array.isArray(targetQuest.rewards)) {
           let changed = false;
           targetQuest.rewards = targetQuest.rewards.map((r: any) => {
-            if (r.weight !== undefined && r.weight <= 0) {
+            if (r.weight !== undefined && numVal(r.weight) <= 0) {
               changed = true;
               return { ...r, weight: 1 };
             }
