@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 #public/textures/
 Quest/
+# Material de referencia externo (quests de otros modpacks y JAR de mods, All Rights Reserved)
+recursos-externos/
