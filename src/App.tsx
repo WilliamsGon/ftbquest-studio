@@ -7,6 +7,10 @@ import { ChapterGroupModal } from './components/ChapterGroupModal';
 import { CommandGeneratorModal } from './components/CommandGeneratorModal';
 import { CrossChapterDependencyModal } from './components/CrossChapterDependencyModal';
 import { DropZoneOverlay } from './components/DropZoneOverlay';
+import { alignItems, distributeItems } from './utils/selectionOps';
+import type { AlignType } from './utils/selectionOps';
+import { createReplacer } from './utils/batchReplace';
+import type { ReplaceFields } from './utils/batchReplace';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainViewport } from './components/MainViewport';
@@ -1943,141 +1947,17 @@ function App() {
     searchQuery: string,
     replaceWith: string,
     scope: 'current' | 'all',
-    fields: {
-      titles: boolean;
-      descriptions: boolean;
-      tasks: boolean;
-      rewards: boolean;
-      icons: boolean;
-    }
+    fields: ReplaceFields
   ) => {
     if (!searchQuery) return;
 
-    let totalReplacements = 0;
-    let modifiedQuestsCount = 0;
-
-    const replaceInQuest = (q: any) => {
-      let isModified = false;
-      const qCopy = JSON.parse(JSON.stringify(q));
-
-      // 1. Títulos y Subtítulos
-      if (fields.titles) {
-        if (typeof qCopy.title === 'string' && qCopy.title.includes(searchQuery)) {
-          const count = qCopy.title.split(searchQuery).length - 1;
-          qCopy.title = qCopy.title.replaceAll(searchQuery, replaceWith);
-          totalReplacements += count;
-          isModified = true;
-        }
-        if (typeof qCopy.subtitle === 'string' && qCopy.subtitle.includes(searchQuery)) {
-          const count = qCopy.subtitle.split(searchQuery).length - 1;
-          qCopy.subtitle = qCopy.subtitle.replaceAll(searchQuery, replaceWith);
-          totalReplacements += count;
-          isModified = true;
-        }
-      }
-
-      // 2. Descripciones
-      if (fields.descriptions && Array.isArray(qCopy.description)) {
-        qCopy.description = qCopy.description.map((line: any) => {
-          if (typeof line === 'string' && line.includes(searchQuery)) {
-            const count = line.split(searchQuery).length - 1;
-            totalReplacements += count;
-            isModified = true;
-            return line.replaceAll(searchQuery, replaceWith);
-          }
-          return line;
-        });
-      }
-
-      // 3. Tareas
-      if (fields.tasks && qCopy.tasks) {
-        const taskList = Array.isArray(qCopy.tasks) ? qCopy.tasks : [qCopy.tasks];
-        taskList.forEach((t: any) => {
-          if (!t) return;
-          if (typeof t.item === 'string' && t.item.includes(searchQuery)) {
-            const count = t.item.split(searchQuery).length - 1;
-            t.item = t.item.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-          if (t.item && typeof t.item === 'object' && typeof t.item.id === 'string' && t.item.id.includes(searchQuery)) {
-            const count = t.item.id.split(searchQuery).length - 1;
-            t.item.id = t.item.id.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-          if (typeof t.title === 'string' && t.title.includes(searchQuery)) {
-            const count = t.title.split(searchQuery).length - 1;
-            t.title = t.title.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-        });
-      }
-
-      // 4. Recompensas
-      if (fields.rewards && qCopy.rewards) {
-        const rewardList = Array.isArray(qCopy.rewards) ? qCopy.rewards : [qCopy.rewards];
-        rewardList.forEach((r: any) => {
-          if (!r) return;
-          if (typeof r.item === 'string' && r.item.includes(searchQuery)) {
-            const count = r.item.split(searchQuery).length - 1;
-            r.item = r.item.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-          if (r.item && typeof r.item === 'object' && typeof r.item.id === 'string' && r.item.id.includes(searchQuery)) {
-            const count = r.item.id.split(searchQuery).length - 1;
-            r.item.id = r.item.id.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-          if (typeof r.title === 'string' && r.title.includes(searchQuery)) {
-            const count = r.title.split(searchQuery).length - 1;
-            r.title = r.title.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-          if (typeof r.command === 'string' && r.command.includes(searchQuery)) {
-            const count = r.command.split(searchQuery).length - 1;
-            r.command = r.command.replaceAll(searchQuery, replaceWith);
-            totalReplacements += count;
-            isModified = true;
-          }
-        });
-      }
-
-      // 5. Iconos
-      if (fields.icons) {
-        if (typeof qCopy.icon === 'string' && qCopy.icon.includes(searchQuery)) {
-          const count = qCopy.icon.split(searchQuery).length - 1;
-          qCopy.icon = qCopy.icon.replaceAll(searchQuery, replaceWith);
-          totalReplacements += count;
-          isModified = true;
-        }
-      }
-
-      if (isModified) modifiedQuestsCount++;
-      return isModified ? qCopy : q;
-    };
-
-    const replaceInImages = (imgList: any[]) => {
-      if (!fields.icons) return imgList;
-      return imgList.map(img => {
-        if (img && typeof img.image === 'string' && img.image.includes(searchQuery)) {
-          const count = img.image.split(searchQuery).length - 1;
-          totalReplacements += count;
-          return { ...img, image: img.image.replaceAll(searchQuery, replaceWith) };
-        }
-        return img;
-      });
-    };
+    const { replaceInQuest, replaceInImages, stats } = createReplacer(searchQuery, replaceWith, fields);
 
     if (scope === 'current') {
       const nextQuests = quests.map(replaceInQuest);
       const nextImages = replaceInImages(images);
       updateState(nextQuests, nextImages);
-      showToast(`Reemplazo completado: ${totalReplacements} ocurrencia(s) en ${modifiedQuestsCount} misión(es)`, 'success');
+      showToast(`Reemplazo completado: ${stats.totalReplacements} ocurrencia(s) en ${stats.modifiedQuestsCount} misión(es)`, 'success');
     } else {
       const nextCurrentQuests = quests.map(replaceInQuest);
       const nextCurrentImages = replaceInImages(images);
@@ -2095,7 +1975,7 @@ function App() {
         };
       }));
 
-      showToast(`Reemplazo masivo: ${totalReplacements} ocurrencia(s) en todas las pestañas`, 'success');
+      showToast(`Reemplazo masivo: ${stats.totalReplacements} ocurrencia(s) en todas las pestañas`, 'success');
     }
   };
 
@@ -2368,240 +2248,16 @@ function App() {
     updateState(nextQuests, nextImages);
   };
 
-  const alignSelectedItems = (alignType: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
-    if (selection.items.length <= 1) return;
-
-    // 1. Calcular cajas delimitadoras de cada elemento
-    const boundsList = selection.items.map(item => {
-      let x = 0;
-      let y = 0;
-      let w = 0;
-      let h = 0;
-
-      if (item.type === 'quest') {
-        const q = quests.find(qi => qi.id === item.id);
-        if (q) {
-          x = q.x?.value ?? q.x ?? 0;
-          y = q.y?.value ?? q.y ?? 0;
-          const sizeVal = q.size?.value ?? q.size ?? 1.0;
-          w = sizeVal;
-          h = sizeVal;
-        }
-      } else {
-        const img = images[item.id as number];
-        if (img) {
-          x = img.x?.value ?? img.x ?? 0;
-          y = img.y?.value ?? img.y ?? 0;
-          w = img.width?.value ?? img.width ?? 2.0;
-          h = img.height?.value ?? img.height ?? 2.0;
-        }
-      }
-
-      return {
-        type: item.type,
-        id: item.id,
-        w,
-        h,
-        left: x - w / 2,
-        right: x + w / 2,
-        top: y - h / 2,
-        bottom: y + h / 2,
-        x,
-        y
-      };
-    });
-
-    // 2. Bounding box común de toda la selección
-    const minLeft = Math.min(...boundsList.map(b => b.left));
-    const maxRight = Math.max(...boundsList.map(b => b.right));
-    const minTop = Math.min(...boundsList.map(b => b.top));
-    const maxBottom = Math.max(...boundsList.map(b => b.bottom));
-
-    const centerX = (minLeft + maxRight) / 2;
-    const centerY = (minTop + maxBottom) / 2;
-
-    // 3. Generar actualizaciones
-    const questUpdates: { id: string; updates: any }[] = [];
-    const imageUpdates: { index: number; updates: any }[] = [];
-
-    boundsList.forEach(b => {
-      let newX = b.x;
-      let newY = b.y;
-
-      switch (alignType) {
-        case 'left':
-          newX = minLeft + b.w / 2;
-          break;
-        case 'center':
-          newX = centerX;
-          break;
-        case 'right':
-          newX = maxRight - b.w / 2;
-          break;
-        case 'top':
-          newY = minTop + b.h / 2;
-          break;
-        case 'middle':
-          newY = centerY;
-          break;
-        case 'bottom':
-          newY = maxBottom - b.h / 2;
-          break;
-      }
-
-      const updates = { x: newX, y: newY };
-      if (b.type === 'quest') {
-        questUpdates.push({ id: b.id as string, updates });
-      } else {
-        imageUpdates.push({ index: b.id as number, updates });
-      }
-    });
-
-    // 4. Aplicar cambios a través de updateState de forma atómica para registrar una sola entrada en el historial
-    const newQuests = quests.map(q => {
-      const found = questUpdates.find(u => u.id === q.id);
-      if (found) {
-        return {
-          ...q,
-          x: { __type: 'number', value: found.updates.x, suffix: 'd' },
-          y: { __type: 'number', value: found.updates.y, suffix: 'd' }
-        };
-      }
-      return q;
-    });
-
-    const newImages = JSON.parse(JSON.stringify(images));
-    imageUpdates.forEach(u => {
-      if (newImages[u.index]) {
-        newImages[u.index].x = { __type: 'number', value: u.updates.x, suffix: 'd' };
-        newImages[u.index].y = { __type: 'number', value: u.updates.y, suffix: 'd' };
-      }
-    });
-
-    updateState(newQuests, newImages);
+  const alignSelectedItems = (alignType: AlignType) => {
+    const result = alignItems(selection.items, quests, images, alignType);
+    if (result) updateState(result.quests, result.images);
   };
 
   const distributeSelectedItems = (axis: 'horizontal' | 'vertical') => {
-    if (selection.items.length < 3) return;
-
-    const boundsList = selection.items.map(item => {
-      let x = 0;
-      let y = 0;
-      let w = 1.0;
-      let h = 1.0;
-
-      if (item.type === 'quest') {
-        const q = quests.find(qi => qi.id === item.id);
-        if (q) {
-          x = getDValue(q.x) ?? 0;
-          y = getDValue(q.y) ?? 0;
-          const sizeVal = getDValue(q.size) ?? 1.0;
-          w = sizeVal;
-          h = sizeVal;
-        }
-      } else {
-        const img = images[item.id as number];
-        if (img) {
-          x = getDValue(img.x) ?? 0;
-          y = getDValue(img.y) ?? 0;
-          w = getDValue(img.width) ?? 2.0;
-          h = getDValue(img.height) ?? 2.0;
-        }
-      }
-
-      return {
-        type: item.type,
-        id: item.id,
-        x,
-        y,
-        w,
-        h
-      };
-    });
-
-    if (axis === 'horizontal') {
-      boundsList.sort((a, b) => a.x - b.x);
-      const firstX = boundsList[0].x;
-      const lastX = boundsList[boundsList.length - 1].x;
-      const span = lastX - firstX;
-      if (Math.abs(span) < 0.001) return;
-      const step = span / (boundsList.length - 1);
-
-      const questUpdates: { id: string; updates: any }[] = [];
-      const imageUpdates: { index: number; updates: any }[] = [];
-
-      boundsList.forEach((b, index) => {
-        const targetX = Math.round((firstX + index * step) * 1000) / 1000;
-        const updates = { x: targetX };
-        if (b.type === 'quest') {
-          questUpdates.push({ id: b.id as string, updates });
-        } else {
-          imageUpdates.push({ index: b.id as number, updates });
-        }
-      });
-
-      const newQuests = quests.map(q => {
-        const found = questUpdates.find(u => u.id === q.id);
-        if (found) {
-          return {
-            ...q,
-            x: { __type: 'number', value: found.updates.x, suffix: 'd' }
-          };
-        }
-        return q;
-      });
-
-      const newImages = JSON.parse(JSON.stringify(images));
-      imageUpdates.forEach(u => {
-        if (newImages[u.index]) {
-          newImages[u.index].x = { __type: 'number', value: u.updates.x, suffix: 'd' };
-        }
-      });
-
-      updateState(newQuests, newImages);
-      showToast('Elementos distribuidos horizontalmente', 'success');
-    } else {
-      boundsList.sort((a, b) => a.y - b.y);
-      const firstY = boundsList[0].y;
-      const lastY = boundsList[boundsList.length - 1].y;
-      const span = lastY - firstY;
-      if (Math.abs(span) < 0.001) return;
-      const step = span / (boundsList.length - 1);
-
-      const questUpdates: { id: string; updates: any }[] = [];
-      const imageUpdates: { index: number; updates: any }[] = [];
-
-      boundsList.forEach((b, index) => {
-        const targetY = Math.round((firstY + index * step) * 1000) / 1000;
-        const updates = { y: targetY };
-        if (b.type === 'quest') {
-          questUpdates.push({ id: b.id as string, updates });
-        } else {
-          imageUpdates.push({ index: b.id as number, updates });
-        }
-      });
-
-      const newQuests = quests.map(q => {
-        const found = questUpdates.find(u => u.id === q.id);
-        if (found) {
-          return {
-            ...q,
-            y: { __type: 'number', value: found.updates.y, suffix: 'd' }
-          };
-        }
-        return q;
-      });
-
-      const newImages = JSON.parse(JSON.stringify(images));
-      imageUpdates.forEach(u => {
-        if (newImages[u.index]) {
-          newImages[u.index].y = { __type: 'number', value: u.updates.y, suffix: 'd' };
-        }
-      });
-
-      updateState(newQuests, newImages);
-      showToast('Elementos distribuidos verticalmente', 'success');
-    }
+    const result = distributeItems(selection.items, quests, images, axis);
+    if (!result) return;
+    updateState(result.quests, result.images);
+    if (result.message) showToast(result.message, 'success');
   };
 
   const handleAutoLayout = (direction: 'LR' | 'TB' = 'LR', onlySelected: boolean = false) => {
