@@ -1637,6 +1637,8 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         onReplaceSingle={onReplaceSingle}
       />
 
+      {/* Con un contenedor de ancho o alto 0 (ventana minúscula o panel colapsado) Konva falla al dibujar */}
+      {dimensions.width > 0 && dimensions.height > 0 && (
       <Stage
         width={dimensions.width}
         height={dimensions.height}
@@ -2620,6 +2622,7 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
           </Layer>
         )}
       </Stage>
+      )}
 
       {/* Mini-mapa Interactivo (Radar / Navigator) */}
       <Minimap
