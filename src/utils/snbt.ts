@@ -25,9 +25,10 @@ export function parseSNBT(snbt: string): any {
       if (valStr === 'true') return true;
       if (valStr === 'false') return false;
       
-      const numMatch = valStr.match(/^(-?\d+(\.\d+)?)[dDLlBbFf]?$/);
+      const numMatch = valStr.match(/^(-?\d+(\.\d+)?)[dDLlBbFfSs]?$/);
       if (numMatch) {
-        return { __type: 'number', value: parseFloat(numMatch[1]), suffix: valStr.replace(numMatch[1], '') };
+        // `raw` conserva el texto original (ej. "2.0", enteros largos) para reexportarlo sin cambios
+        return { __type: 'number', value: parseFloat(numMatch[1]), suffix: valStr.slice(numMatch[1].length), raw: numMatch[1] };
       }
       return valStr;
     }
@@ -50,9 +51,16 @@ export function parseSNBT(snbt: string): any {
     return str;
   }
 
-  function parseArray(): any[] {
+  function parseArray(): any {
     pos++; // skip [
-    const arr = [];
+    // Arrays tipados de NBT: [I; 1, 2], [L; 1L], [B; 1b]
+    let kind: string | null = null;
+    const typed = snbt.slice(pos).match(/^\s*([BILbil])\s*;/);
+    if (typed) {
+      kind = typed[1].toUpperCase();
+      pos += typed[0].length;
+    }
+    const arr: any[] = [];
     while (pos < snbt.length) {
       skipWhitespace();
       if (snbt[pos] === ']') {
@@ -65,7 +73,7 @@ export function parseSNBT(snbt: string): any {
       }
       arr.push(parseValue());
     }
-    return arr;
+    return kind ? { __type: 'typedArray', kind, items: arr } : arr;
   }
 
   function parseObject(): Record<string, any> {
@@ -86,7 +94,8 @@ export function parseSNBT(snbt: string): any {
       if (snbt[pos] === '"') {
         key = parseString();
       } else {
-        const match = snbt.slice(pos).match(/^([a-zA-Z0-9_]+)/);
+        // Claves sin comillas: Minecraft admite también '.', '+' y '-' (ej. GT.Tool)
+        const match = snbt.slice(pos).match(/^([a-zA-Z0-9_.+-]+)/);
         if (match) {
           key = match[1];
           pos += key.length;
@@ -121,7 +130,13 @@ export function stringifySNBT(obj: any, indentLevel = 0): string {
   
   if (typeof obj === 'object') {
     if (obj.__type === 'number') {
-      return `${obj.value}${obj.suffix}`;
+      // Si el valor no cambió respecto al texto original, se reescribe tal cual (2.0f, enteros largos...)
+      const text = obj.raw !== undefined && parseFloat(obj.raw) === obj.value ? obj.raw : String(obj.value);
+      return `${text}${obj.suffix ?? ''}`;
+    }
+
+    if (obj.__type === 'typedArray') {
+      return `[${obj.kind}; ${(obj.items as any[]).map((v) => stringifySNBT(v, indentLevel + 1)).join(', ')}]`;
     }
     
     if (Array.isArray(obj)) {
@@ -142,7 +157,7 @@ export function stringifySNBT(obj: any, indentLevel = 0): string {
       const val = obj[key];
       if (val === undefined) continue;
       
-      const keyStr = /^[a-zA-Z0-9_]+$/.test(key) ? key : `"${key}"`;
+      const keyStr = /^[a-zA-Z0-9_.+-]+$/.test(key) ? key : `"${key}"`;
       str += innerIndent + `${keyStr}: ` + stringifySNBT(val, indentLevel + 1) + '\n';
     }
     str += indent + '}';

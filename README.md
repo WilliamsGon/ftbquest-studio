@@ -1,118 +1,148 @@
 # FTB Quest Studio (ftb-snbt-editor)
 
-**FTB Quest Studio** es un editor gráfico interactivo basado en web diseñado específicamente para crear, visualizar y editar mapas de misiones (quests) de **FTB Quests** (Minecraft 1.20.1+) en formato **SNBT** (Stringified NBT).
+**FTB Quest Studio** es una suite web para diseñar, auditar, simular y exportar modpacks completos de **FTB Quests** (Minecraft 1.20.1+) en formato **SNBT** (Stringified NBT). Corre 100 % en el navegador, sin backend.
 
-El editor permite a los creadores de modpacks manipular de manera visual la disposición de las misiones y los elementos decorativos (imágenes), simplificando drásticamente el proceso de diseño de los árboles de misiones en comparación con la edición manual del código o las interfaces en el juego.
-
----
-
-## 🚀 ¿Para qué sirve?
-
-En Minecraft, el mod **FTB Quests** guarda su configuración en archivos con extensión `.snbt`. Editar la posición tridimensional (ejes X e Y), el tamaño, las texturas y el orden de renderizado directamente en archivos de texto es complejo y propenso a errores. 
-
-Esta herramienta proporciona una interfaz en tiempo real (similar a programas de diseño como Figma o Illustrator) donde puedes cargar un archivo SNBT (típicamente el archivo que contiene el árbol de misiones de un capítulo), arrastrar elementos, alinear los, modificar sus propiedades gráficas, añadir imágenes decorativas de fondo y finalmente exportar el archivo listo para usar en tu modpack.
+Permite abrir varios capítulos a la vez, editarlos de forma visual (mapa) o tabular, validar la integridad del grafo de misiones, simular la progresión de un jugador y exportar todo con la estructura de carpetas de FTB Quests.
 
 ---
 
-## ✨ Características y Funcionalidades
+## Stack
 
-### 1. Visualización y Edición en Canvas
-*   **Zoom y Paneo:** Desplázate libremente por el mapa arrastrando la vista (herramienta de mano o manteniendo presionada la tecla `Espacio`) y haciendo zoom con la rueda del ratón.
-*   **Arrastrar y Soltar (Drag & Drop):** Mueve de forma interactiva una o varias misiones e imágenes en el canvas.
-*   **Ajuste de Rejilla (Snap to Grid):** Asegura que los elementos se muevan en incrementos exactos para mantener un diseño alineado y prolijo.
-
-### 2. Edición Multielemento y Alineación Avanzada
-*   **Selección Múltiple:** Utiliza un cuadro de selección (arrastrando el puntero) para seleccionar múltiples misiones o imágenes a la vez.
-*   **Herramientas de Alineación:** Alinea de manera instantánea el grupo de elementos seleccionados (Izquierda, Centro Horizontal, Derecha, Arriba, Centro Vertical, Abajo).
-*   **Copiar y Pegar Masivo:** Copia un conjunto de elementos y pégalos en la posición actual de tu cursor para clonar secciones del mapa de forma ágil.
-*   **Historial de Cambios (Undo/Redo):** Deshaz (`Ctrl + Z`) o rehén (`Ctrl + Y` o `Ctrl + Shift + Z`) cualquier cambio en el diseño sin perder el progreso.
-
-### 3. Gestión de Misiones (Quests)
-*   **Generador de ID Único:** Crea automáticamente identificadores hexadecimales de 16 caracteres de forma aleatoria y única para cada misión nueva (tal como lo requiere FTB Quests).
-*   **Propiedades Editables:** Modifica títulos, la posición exacta (`x`, `y`) y otros metadatos directamente desde el panel lateral.
-*   **Edición Raw de SNBT:** Un editor de texto integrado para modificar la estructura NBT completa de una misión seleccionada si requieres agregar configuraciones avanzadas no expuestas en el formulario simple.
-
-### 4. Capas Decorativas (Imágenes de Fondo)
-*   **Renderizado de Fondos:** Agrega, elimina y posiciona imágenes en el mapa de misiones.
-*   **Propiedades de Imagen:** Configura el tamaño (ancho/alto), rotación en grados, nivel de transparencia (opacidad) y orden de capa (Z-index/order).
-*   **Tinte de Color:** Aplica filtros de color RGB a las imágenes para crear efectos de sombreado o variaciones de color sin editar la textura original.
+- React 19 + TypeScript 6 + Vite 8
+- Canvas: `konva` / `react-konva`
+- `jszip` (exportación ZIP), `adm-zip` (script de texturas), `lucide-react` (iconos), `uuid`
+- Lint: `oxlint`
+- Despliegue automático en **GitHub Pages** (`.github/workflows/deploy.yml`, al hacer push a `main`)
 
 ---
 
-## 🎨 Integración de Texturas de Minecraft
+## ✨ Funcionalidades
 
-El editor no incluye texturas de Minecraft por defecto debido a derechos de autor. Sin embargo, cuenta con un potente **Extractor de Texturas** automático.
+### Edición en el lienzo (mapa)
+- Zoom, paneo (herramienta mano o `Espacio`), selección por recuadro y selección múltiple.
+- Arrastrar misiones e imágenes con **snap a rejilla** (relativo/absoluto) y **smart snapping** con guías magnéticas.
+- Alineación (izquierda, centro, derecha, arriba, medio, abajo) y distribución.
+- Duplicar, bloquear/desbloquear elementos, capas visibles (misiones, imágenes, dependencias) y filtro por nivel Z.
+- Formas de misión estilo FTB (círculo, engranaje, polígonos…), líneas de conexión bezier / rectas / ortogonales.
+- **Minimapa**, **búsqueda y reemplazo masivo** (`Ctrl+F` / `Ctrl+H`) y menú contextual.
+- Rendimiento: frustum culling, modo eco y calidad de textura adaptable.
 
-Este script lee los archivos `.jar` de tu juego y tus mods, extrae las texturas de bloques e ítems en formato `.png` y las guarda de manera estructurada en la carpeta `public/textures` para que la aplicación las renderice en tiempo real.
+### Pestañas de capítulos
+- Abre varios `.snbt` a la vez (botón o arrastrar y soltar). Cada pestaña conserva su propio historial, selección, cámara y estado “modificado”.
+- Capítulos nuevos en blanco, cierre de pestañas y navegación con `Ctrl+Tab` / `Ctrl+W`.
+- Panel lateral de propiedades redimensionable y colapsable.
 
-### Cómo extraer las texturas:
-1. Asegúrate de tener las dependencias de Node.js instaladas (`npm install`).
-2. Ejecuta el script extractor:
-   ```bash
-   npm run extract-textures
-   ```
-3. El script te solicitará dos rutas opcionales:
-   *   **Ruta de la carpeta `mods`:** La ubicación de la carpeta de mods de tu instancia o perfil de Minecraft (ej. CurseForge, Prism Launcher o Modrinth). El script analizará todos los archivos `.jar` en busca de texturas.
-   *   **Ruta del archivo `.jar` Vanilla:** La ruta al archivo `.jar` de Minecraft Vanilla (ej. `.minecraft/versions/1.20.1/1.20.1.jar`).
-4. Una vez finalizado, se creará la carpeta `public/textures` y el editor mostrará las texturas reales de los ítems y bloques de Minecraft (o círculos grises por defecto de fallback si la textura no se encuentra).
+### Vista de tabla
+- Edición de misiones, tareas y recompensas en forma de tabla.
+- Selección múltiple, **edición por lote**, ordenación, paginación y **exportación a CSV**.
+
+### Misiones, tareas y recompensas
+- IDs hexadecimales únicos de 16 caracteres.
+- Gestor completo de tareas y recompensas ([QuestTaskRewardManager](src/components/QuestTaskRewardManager.tsx)).
+- Editor de texto Minecraft con códigos `&` / `&#RRGGBB`, paleta, formatos y vista previa en vivo.
+- Edición **NBT/SNBT raw** de cualquier misión.
+- Selector de iconos/texturas y selector de **etiquetas de ítem** (`#forge:...`).
+- **Dependencias**: crear, invertir, borrar y dependencias **entre capítulos**; validación de ciclos y dependencias rotas.
+- **Auto-layout** (Sugiyama, horizontal o vertical), también sobre la selección.
+
+### Imágenes decorativas
+- Posición, tamaño, rotación, opacidad, tinte de color y orden de capa.
+
+### Historial, portapapeles y atajos
+`Ctrl+Z` deshacer · `Ctrl+Y` / `Ctrl+Shift+Z` rehacer · `Ctrl+C` / `Ctrl+V` copiar/pegar · `Ctrl+D` duplicar · `Ctrl+W` cerrar pestaña · `Ctrl+Tab` cambiar pestaña · `Supr` borrar dependencia seleccionada.
+
+### Herramientas de modpack
+- **Reward Tables y Loot Crates**: editor visual, importación `.snbt` y exportación.
+- **Grupos de capítulos**: edición y descarga de `chapter_groups.snbt`.
+- **Blueprints y prefabs**: plantillas prehechas (Progresión por Tiers, Boss Rush, Checklist inicial), guardado de selecciones como plantilla propia y cajón de prefabs anclados.
+- **Traducciones (i18n)**: convierte textos a claves `{clave}` y exporta/importa `en_us.json` y `es_es.json`.
+- **Analytics**: reparto por capítulo y grupo, economía (XP, tareas, recompensas), cuellos de botella y misiones huérfanas.
+- **Modpack Doctor**: auditoría de integridad (tareas/recompensas inválidas, tablas rotas, dependencias rotas, textos faltantes…) con puntuación de salud y auto-reparación.
+- **Simulador de progresión** y **Modo Jugador**: desbloqueo por dependencias, inventario virtual, XP y tablas de loot.
+- **Generador de comandos**: `/ftbquests change_progress <jugador> <acción> <id>`, `/give` de los ítems requeridos y scripts KubeJS de prueba.
+
+### Importación y exportación
+- Importar: uno o varios `.snbt` de capítulos (típicamente `config/ftbquests/quests/chapters/`).
+- Exportar: capítulo actual, todos los capítulos, o un **ZIP** con la estructura  
+  `config/ftbquests/quests/{chapters, reward_tables}/` más `chapter_groups.snbt`.
+
+### Persistencia
+Los capítulos viven solo en memoria hasta que los exportas. Se guardan en `localStorage`: reward tables, grupos de capítulos, prefabs anclados, ancho del panel lateral y estilo de líneas.
 
 ---
 
-## 🛠️ Instalación y Configuración del Proyecto
+## 🎨 Texturas de Minecraft
 
-### Requisitos previos
-*   [Node.js](https://nodejs.org/) (versión 18 o superior recomendada).
-*   [npm](https://www.npmjs.com/) (generalmente incluido con Node.js).
+El editor lee las texturas desde `public/textures/` y un índice `textures-index.json`. Si no se encuentra una textura se muestra un círculo gris de reserva.
 
-### Instalación de dependencias
-Abre tu consola en la carpeta raíz del proyecto y ejecuta:
+> ⚠️ El repositorio actualmente **incluye** `public/textures` (≈29 000 PNG, ~81 MB de Vanilla y mods). Las texturas pertenecen a Mojang y a los autores de cada mod; considera ignorarlas en `.gitignore` (hay una línea `#public/textures/` comentada) y generarlas localmente.
+
+### Regenerarlas con el extractor
 ```bash
 npm install
+npm run extract-textures
 ```
+El script pregunta (ambas opcionales):
+1. Ruta de la carpeta `mods` de tu instancia (analiza todos los `.jar`).
+2. Ruta del `.jar` Vanilla (p. ej. `.minecraft/versions/1.20.1/1.20.1.jar`).
 
-### Iniciar en modo desarrollo
-Inicia el servidor local de desarrollo con Vite:
-```bash
-npm run dev
-```
-Abre en tu navegador la dirección web que se muestra en la terminal (usualmente `http://localhost:5173`).
-
-### Compilar para producción
-Genera el paquete optimizado y listo para desplegar:
-```bash
-npm run build
-```
+Extrae `assets/<namespace>/textures/{item,block}/**/*.png` a `public/textures/` y regenera `textures-index.json`.
 
 ---
 
-## 📖 Instrucciones de Uso
+## 🛠️ Desarrollo
 
-1.  **Cargar un archivo:** Haz clic en el botón **Cargar SNBT** (icono de subir) y selecciona el archivo `.snbt` de tu capítulo de FTB Quests (usualmente ubicado en `config/ftbquests/quests/chapters/...`).
-2.  **Organizar el espacio de trabajo:**
-    *   Usa la herramienta **Mano** (`Espacio` o el icono de mano) para mover la cámara por el plano.
-    *   Usa la herramienta **Seleccionar** para mover y redimensionar elementos individuales o en grupo.
-3.  **Configurar visibilidad:** Puedes ocultar o mostrar las capas de "Misiones" o "Imágenes" desde el panel de capas para facilitar la edición sin interferencias.
-4.  **Editar elemento:** Selecciona una misión o imagen. En el lateral derecho verás sus propiedades:
-    *   *Misión:* Título, posición, tareas, recompensas y la opción de editar su código SNBT crudo.
-    *   *Imagen:* Ruta de la textura (ej: `minecraft:textures/block/stone.png`), escala, rotación, transparencia, color y orden de renderizado.
-5.  **Alineación rápida:** Si quieres alinear un conjunto de quests vertical u horizontalmente, selecciónalas y usa los iconos de alineación en el panel superior.
-6.  **Exportar:** Cuando termines de editar, haz clic en **Exportar SNBT** (icono de descarga). Esto descargará el archivo modificado manteniendo la estructura y sintaxis correctas del formato original para que lo reemplaces en la carpeta de tu modpack.
+Requisitos: Node.js 18+ (CI usa 20) y npm.
+
+```bash
+npm install
+npm run dev       # servidor de desarrollo
+npm run build     # tsc -b && vite build
+npm run lint      # oxlint
+npm test          # Vitest (pruebas unitarias)
+npm run preview   # previsualizar el build
+```
+
+`vite.config.ts` define `base: '/ftbquest-studio/'`, por lo que en local la app se sirve en `http://localhost:5173/ftbquest-studio/`.
 
 ---
 
-## 📂 Estructura del Código
+## 📖 Uso rápido
 
-Para desarrolladores que deseen extender el proyecto:
+1. Pulsa **Cargar SNBT** o arrastra uno o varios `.snbt` a la ventana.
+2. Edita en **Mapa** o **Tabla**; el panel derecho muestra las propiedades de la selección.
+3. Revisa el **Doctor**, **Analytics** y el **Simulador**.
+4. Exporta con **Exportar** (capítulo), **Exportar todo** o **ZIP** y copia el resultado a la carpeta de tu modpack.
+
+---
+
+## 📂 Estructura del código
 
 ```
-├── scripts/
-│   └── extract-textures.js    # Script de Node para descomprimir y extraer texturas de archivos .jar.
-├── src/
-│   ├── components/
-│   │   └── EditorCanvas.tsx   # El lienzo interactivo implementado con react-konva (HTML5 Canvas).
-│   ├── utils/
-│   │   └── snbt.ts            # Parser y stringificador personalizado de formato SNBT.
-│   ├── App.tsx                # Lógica de la aplicación: estados, historial, portapapeles y paneles.
-│   ├── App.css                # Estilos del dashboard del editor.
-│   └── main.tsx               # Punto de entrada de React.
+├── .github/workflows/deploy.yml   # Despliegue a GitHub Pages
+├── scripts/extract-textures.js    # Extrae texturas de .jar y genera textures-index.json
+├── public/textures/               # Texturas extraídas + textures-index.json
+└── src/
+    ├── App.tsx                    # Estado global: pestañas, historial, portapapeles, atajos, paneles, import/export
+    ├── components/
+    │   ├── EditorCanvas.tsx       # Lienzo react-konva (culling, snapping, conexiones)
+    │   ├── TableView.tsx          # Vista de tabla + edición por lote (TableBatchModal)
+    │   ├── QuestTaskRewardManager.tsx, QuestShape.tsx, Minimap.tsx, QuestSearchBar.tsx, ChapterTabBar.tsx
+    │   ├── MinecraftTextEditorModal / MinecraftTextToolbar / MinecraftFormattedPreview
+    │   ├── TexturePickerModal, ItemTagPickerModal
+    │   ├── RewardTableModal, ChapterGroupModal, CrossChapterDependencyModal
+    │   ├── BlueprintLibraryModal, PinnedPrefabsModal, TranslationManagerModal
+    │   └── AnalyticsDashboardModal, ModpackDoctorModal, QuestSimulatorModal, CommandGeneratorModal
+    ├── types/                     # chapter, chapterGroup, rewardTable, blueprints, i18n, analytics
+    └── utils/
+        ├── snbt.ts                # Parser y serializador SNBT propios
+        ├── autoLayout.ts, smartSnapping.ts, graphValidation.ts
+        ├── blueprintEngine.ts, i18nManager.ts, zipExporter.ts
+        ├── modpackDoctor.ts, questAnalytics.ts, questSimulatorEngine.ts, commandGenerator.ts
+        └── textureHelper.tsx, isometricBlockRenderer.tsx, minecraftText.tsx, minecraftCatalogs.ts, itemTagCatalogs.ts
 ```
+
+### Notas técnicas
+- `snbt.ts` representa los números como `{ __type: 'number', value, suffix }` para conservar sufijos (`b`, `d`, `f`, `L`). Las claves que empiezan por `_` son internas y no se exportan. El parser es tolerante y no valida; no conserva comentarios.
+- Tests con Vitest (`npm test`): parser SNBT, reward tables, `table_id`, libro de misiones, validación de grafo, auto-layout, comandos y ZIP.
+- `src/utils/realQuests.test.ts` comprueba el editor con quests reales de modpacks; se omite si no existe la carpeta `recursos-externos/` (no se versiona). Se puede apuntar a otra con `FTB_REAL_QUESTS_DIR`.

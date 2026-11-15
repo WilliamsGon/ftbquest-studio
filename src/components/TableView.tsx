@@ -1,3 +1,4 @@
+import { tableIdToHex, tableIdFromInput } from '../utils/tableId';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Trash2, Tag, Gift, Clipboard, Download, 
@@ -981,7 +982,7 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
           ? (getDValue(r.rewardObj.command) || '')
           : (typeof r.rewardObj.item === 'string'
               ? r.rewardObj.item
-              : (getDValue(r.rewardObj.item?.id) || r.rewardObj.table_id || ''));
+              : (getDValue(r.rewardObj.item?.id) || tableIdToHex(r.rewardObj.table_id) || ''));
         const countVal = r.rewardObj.count !== undefined 
           ? getDValue(r.rewardObj.count) 
           : (typeof r.rewardObj.item === 'object' && r.rewardObj.item !== null ? (getDValue(r.rewardObj.item.Count) ?? 1) : 1);
@@ -1750,10 +1751,10 @@ export const TableView: React.FC<TableViewProps> = ({ quests, updateQuest, onOpe
                         <input 
                           type="text" 
                           className="table-input"
-                          value={r.rewardObj.table_id || r.rewardObj.table || itemVal}
+                          value={tableIdToHex(r.rewardObj.table_id ?? r.rewardObj.table) || itemVal}
                           onChange={(e) => {
                             const val = e.target.value;
-                            handleUpdateRewardProperty(r.questId, r.rewardIndex, 'table_id', val);
+                            handleUpdateRewardProperty(r.questId, r.rewardIndex, 'table_id', tableIdFromInput(val));
                           }}
                           placeholder="Loot Table ID / Hex"
                           style={{ width: '100%' }}

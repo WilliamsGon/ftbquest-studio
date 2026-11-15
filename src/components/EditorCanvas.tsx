@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Text, Group, Line, Image as KonvaImage, Arrow } from 'react-konva';
-import useImage from 'use-image';
 import { MousePointer, Hand, Crosshair, Magnet, Sparkles, ChevronDown, Search, Zap } from 'lucide-react';
 import Konva from 'konva';
 import { QuestShape } from './QuestShape';
@@ -133,6 +132,51 @@ const getCandidateUrls = (icon: any): string[] => {
   return result;
 };
 
+// Caché compartida de imágenes por URL: cientos de nodos con la misma textura comparten una única
+// carga/decodificación, y las URL que fallaron no se vuelven a pedir.
+type SharedImageStatus = 'loading' | 'loaded' | 'failed';
+interface SharedImageEntry {
+  status: SharedImageStatus;
+  image?: HTMLImageElement;
+  subs: Set<() => void>;
+}
+const sharedImageCache = new Map<string, SharedImageEntry>();
+
+function useSharedImage(url: string): [HTMLImageElement | undefined, SharedImageStatus] {
+  const [, forceRender] = useState(0);
+
+  useEffect(() => {
+    if (!url) return;
+    let entry = sharedImageCache.get(url);
+    if (!entry) {
+      const created: SharedImageEntry = { status: 'loading', subs: new Set() };
+      const img = new window.Image();
+      img.onload = () => {
+        created.status = 'loaded';
+        created.image = img;
+        created.subs.forEach((fn) => fn());
+      };
+      img.onerror = () => {
+        created.status = 'failed';
+        created.subs.forEach((fn) => fn());
+      };
+      img.src = url;
+      sharedImageCache.set(url, created);
+      entry = created;
+    }
+    const notify = () => forceRender((n) => n + 1);
+    entry.subs.add(notify);
+    // Si ya estaba resuelta (cargada o fallida) hay que avisar al componente recién montado
+    if (entry.status !== 'loading') notify();
+    return () => {
+      entry!.subs.delete(notify);
+    };
+  }, [url]);
+
+  const entry = url ? sharedImageCache.get(url) : undefined;
+  return [entry?.image, entry?.status ?? 'loading'];
+}
+
 interface FtbTextureProps {
   icon: any;
   width: number;
@@ -144,7 +188,7 @@ interface FtbTextureProps {
 }
 
 // Componente para cargar texturas de FTB extraídas (optimizado con soporte de calidad y culling)
-const FtbTexture: React.FC<FtbTextureProps> = ({ 
+const FtbTextureBase: React.FC<FtbTextureProps> = ({ 
   icon, 
   width, 
   height, 
@@ -162,7 +206,7 @@ const FtbTexture: React.FC<FtbTextureProps> = ({
   }, [candidates]);
 
   const currentUrl = candidates[candidateIdx] || '';
-  const [image, status] = useImage(currentUrl);
+  const [image, status] = useSharedImage(currentUrl);
 
   const isBlock = useMemo(() => isBlockTexture(currentUrl), [currentUrl]);
   const [isoCanvas, setIsoCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -240,6 +284,106 @@ const FtbTexture: React.FC<FtbTextureProps> = ({
     />
   );
 };
+
+const FtbTexture = React.memo(FtbTextureBase);
+
+// Nodo de imagen decorativa. Es memoizado: solo se vuelve a renderizar si cambian sus propiedades
+// primitivas. Los manejadores de eventos viven en `handlersRef` (siempre con el estado más reciente).
+interface ImageNodeProps {
+  idx: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rot: number;
+  isSelected: boolean;
+  isLocked: boolean;
+  image: any;
+  color: any;
+  opacity: number;
+  lowQuality: boolean;
+  stageScale: number;
+  activeTool: 'select' | 'pan';
+  handlersRef: React.MutableRefObject<any>;
+}
+
+const ImageNode = React.memo(function ImageNode({
+  idx, x, y, w, h, rot, isSelected, isLocked, image, color, opacity, lowQuality, stageScale, activeTool, handlersRef
+}: ImageNodeProps) {
+  return (
+    <Group
+      x={x}
+      y={y}
+      rotation={rot}
+      draggable={!isLocked}
+      onMouseEnter={(e) => {
+        const stage = e.target.getStage();
+        if (stage && activeTool === 'select') {
+          stage.container().style.cursor = 'move';
+        }
+      }}
+      onMouseLeave={(e) => {
+        const stage = e.target.getStage();
+        if (stage && activeTool === 'select') {
+          stage.container().style.cursor = 'default';
+        }
+      }}
+      onClick={(e) => handlersRef.current.onClick(e, idx)}
+      onDragStart={(e) => handlersRef.current.onDragStart(e, idx, isLocked)}
+      onDragMove={(e) => handlersRef.current.onDragMove(e, idx)}
+      onDragEnd={(e) => handlersRef.current.onDragEnd(e, idx)}
+    >
+      {/* Área de impacto para garantizar captura de clics y arrastre al 100% */}
+      <Rect
+        width={w}
+        height={h}
+        offsetX={w / 2}
+        offsetY={h / 2}
+        fill="rgba(0, 0, 0, 0.001)"
+        listening={true}
+        // Solo existe en el grafo de impacto: no se pinta nada en la escena visible
+        sceneFunc={() => {}}
+        hitFunc={(ctx, shape) => {
+          ctx.beginPath();
+          ctx.rect(-w / 2, -h / 2, w, h);
+          ctx.closePath();
+          ctx.fillStrokeShape(shape);
+        }}
+      />
+
+      <FtbTexture
+        icon={image}
+        width={w}
+        height={h}
+        color={color}
+        opacity={opacity}
+        lowQuality={lowQuality}
+        skipIsometric={true}
+      />
+
+      {/* Borde de selección */}
+      {isSelected && (
+        <Rect
+          width={w}
+          height={h}
+          offsetX={w / 2}
+          offsetY={h / 2}
+          stroke="#7b61ff"
+          strokeWidth={3 / stageScale}
+        />
+      )}
+
+      {isLocked && (
+        <Text
+          text="🔒"
+          fontSize={14 / stageScale}
+          x={-w / 2 + 4}
+          y={-h / 2 + 4}
+        />
+      )}
+    </Group>
+  );
+});
 
 export const EditorCanvas: React.FC<CanvasProps> = ({ 
   quests, 
@@ -504,33 +648,278 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     });
   }, [quests, viewportBounds, selection.items, draggingId, isEcoActive]);
 
-  // Imágenes visibles en pantalla con Frustum Culling activo
+  // Imágenes seleccionadas (Set para consultas O(1) en lugar de recorrer la selección por cada imagen)
+  const selectedImageSet = useMemo(() => {
+    const set = new Set<number>();
+    selection.items.forEach(i => { if (i.type === 'image') set.add(i.id as number); });
+    return set;
+  }, [selection.items]);
+
+  // Imágenes visibles en pantalla con Frustum Culling activo, ya ordenadas por "order" (z-index).
+  // Se guardan como referencias (sin clonar cada imagen) junto a su índice original.
   const visibleImages = useMemo(() => {
-    const indexed = images.map((img, idx) => ({ ...img, originalIndex: idx }));
-    if (images.length < 20 && !isEcoActive) return indexed;
+    const cullingOn = images.length >= 20 || isEcoActive;
+    const result: { img: any; originalIndex: number; order: number }[] = [];
 
-    const selectedImgIndices = new Set(
-      selection.items.filter(i => i.type === 'image').map(i => i.id as number)
-    );
+    for (let idx = 0; idx < images.length; idx++) {
+      const img = images[idx];
+      if (cullingOn && !selectedImageSet.has(idx) && draggingId !== idx) {
+        const ix = getDValue(img.x) * SCALE_FACTOR;
+        const iy = getDValue(img.y) * SCALE_FACTOR;
+        const halfW = (getDValue(img.width) * SCALE_FACTOR) / 2;
+        const halfH = (getDValue(img.height) * SCALE_FACTOR) / 2;
+        const inside =
+          ix + halfW >= viewportBounds.minX &&
+          ix - halfW <= viewportBounds.maxX &&
+          iy + halfH >= viewportBounds.minY &&
+          iy - halfH <= viewportBounds.maxY;
+        if (!inside) continue;
+      }
+      result.push({ img, originalIndex: idx, order: getDValue(img.order) });
+    }
 
-    return indexed.filter(img => {
-      if (selectedImgIndices.has(img.originalIndex) || draggingId === img.originalIndex) return true;
+    // sort es estable: a igual "order" se conserva el orden original del archivo
+    return result.sort((a, b) => a.order - b.order);
+  }, [images, viewportBounds, selectedImageSet, draggingId, isEcoActive]);
 
-      const ix = getDValue(img.x) * SCALE_FACTOR;
-      const iy = getDValue(img.y) * SCALE_FACTOR;
-      const w = getDValue(img.width) * SCALE_FACTOR;
-      const h = getDValue(img.height) * SCALE_FACTOR;
-      const halfW = w / 2;
-      const halfH = h / 2;
+  // Manejadores de las imágenes: se reasignan en cada render para ver siempre el estado actual,
+  // pero su referencia (el ref) es estable, así los nodos memoizados no se vuelven a renderizar.
+  const imageHandlersRef = useRef<any>(null);
+  imageHandlersRef.current = {
+    onClick: (e: any, idx: number) => {
+                    e.cancelBubble = true;
+                    // Selección individual o múltiple con Shift
+                    if (e.evt.shiftKey) {
+                      const isAlreadySelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                      let newItems = [];
+                      if (isAlreadySelected) {
+                        newItems = selection.items.filter(item => !(item.type === 'image' && item.id === idx));
+                      } else {
+                        newItems = [...selection.items, { type: 'image' as const, id: idx }];
+                      }
+                      
+                      const hasQuests = newItems.some(i => i.type === 'quest');
+                      const hasImages = newItems.some(i => i.type === 'image');
+                      const type = (hasQuests && hasImages) ? 'mixed' : (hasQuests ? 'quest' : (hasImages ? 'image' : null));
+                      setSelection({ type, ids: newItems.map(i => i.id), items: newItems });
+                    } else {
+                      // Clic normal: Selecciona solo este
+                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
+                    }
+                  },
+    onDragStart: (e: any, idx: number, isLocked: boolean) => {
+                    const node = e.currentTarget;
+                    if (isLocked) {
+                      node.stopDrag();
+                      return;
+                    }
+                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                    if (!isImgSelected) {
+                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
+                    }
+                    setDraggingId(idx);
+                    setDragStartPos({ x: node.x(), y: node.y() });
+                    setDragOffset({ x: 0, y: 0 });
+                  },
+    onDragMove: (e: any, idx: number) => {
+                    const node = e.currentTarget;
+                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                    if (isImgSelected && selection.items.length > 1) {
+                      // Buscar si hay misiones seleccionadas
+                      const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
+                      if (anchorQuest && snapToGrid) {
+                        const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+                        const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
+                        
+                        const qOrigX = getDValue(anchorQuest.x) * SCALE_FACTOR;
+                        const qOrigY = getDValue(anchorQuest.y) * SCALE_FACTOR;
+                        
+                        // Desplazamiento bruto
+                        const rawDeltaX = node.x() - dragStartPos!.x;
+                        const rawDeltaY = node.y() - dragStartPos!.y;
+                        
+                        // Posición tentativa de la misión
+                        const qTentX = qOrigX + rawDeltaX;
+                        const qTentY = qOrigY + rawDeltaY;
+                        
+                        const qSnappedX = Math.round(qTentX / snapPixels) * snapPixels;
+                        const qSnappedY = Math.round(qTentY / snapPixels) * snapPixels;
+                        
+                        const realDeltaX = qSnappedX - qOrigX;
+                        const realDeltaY = qSnappedY - qOrigY;
+                        
+                        node.x(dragStartPos!.x + realDeltaX);
+                        node.y(dragStartPos!.y + realDeltaY);
+                        setDragOffset({ x: realDeltaX, y: realDeltaY });
+                      } else {
+                        // Comportamiento normal con o sin snap
+                        if (snapToGrid) {
+                          const snapPixels = 0.5 * SCALE_FACTOR;
+                          const x = node.x();
+                          const y = node.y();
+                          const snappedX = Math.round(x / snapPixels) * snapPixels;
+                          const snappedY = Math.round(y / snapPixels) * snapPixels;
+                          node.x(snappedX);
+                          node.y(snappedY);
+                          setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
+                        } else {
+                          setDragOffset({ x: node.x() - dragStartPos!.x, y: node.y() - dragStartPos!.y });
+                        }
+                      }
+                    } else {
+                      // Arrastre individual sin selección múltiple
+                      if (snapToGrid) {
+                        const snapPixels = 0.5 * SCALE_FACTOR;
+                        const x = node.x();
+                        const y = node.y();
+                        const snappedX = Math.round(x / snapPixels) * snapPixels;
+                        const snappedY = Math.round(y / snapPixels) * snapPixels;
+                        node.x(snappedX);
+                        node.y(snappedY);
+                      }
+                      if (dragStartPos) {
+                        const deltaX = node.x() - dragStartPos.x;
+                        const deltaY = node.y() - dragStartPos.y;
+                        setDragOffset({ x: deltaX, y: deltaY });
+                      }
+                    }
+                  },
+    onDragEnd: (e: any, idx: number) => {
+                    const node = e.currentTarget;
+                    if (dragStartPos) {
+                      const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
+                      if (isImgSelected && selection.items.length > 1) {
+                        // Buscar si hay misiones seleccionadas
+                        const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
+                        
+                        let deltaX = (node.x() - dragStartPos.x) / SCALE_FACTOR;
+                        let deltaY = (node.y() - dragStartPos.y) / SCALE_FACTOR;
 
-      return (
-        ix + halfW >= viewportBounds.minX &&
-        ix - halfW <= viewportBounds.maxX &&
-        iy + halfH >= viewportBounds.minY &&
-        iy - halfH <= viewportBounds.maxY
-      );
-    });
-  }, [images, viewportBounds, selection.items, draggingId, isEcoActive]);
+                        if (anchorQuest) {
+                          // Si hay misión ancla, ella manda
+                          const qOrigX = getDValue(anchorQuest.x);
+                          const qOrigY = getDValue(anchorQuest.y);
+                          const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
+                          const snapStep = sizeVal / 2;
+
+                          if (snapToGrid) {
+                            deltaX = Math.round(deltaX / snapStep) * snapStep;
+                            deltaY = Math.round(deltaY / snapStep) * snapStep;
+                          }
+
+                          const qFinalX = qOrigX + deltaX;
+                          const qFinalY = qOrigY + deltaY;
+                          
+                          // Actualizar quests seleccionadas relativamente
+                          const questUpdates = selection.items
+                            .filter(item => item.type === 'quest')
+                            .map(item => {
+                              const qObj = quests.find(q => q.id === item.id);
+                              return {
+                                id: item.id as string,
+                                updates: {
+                                  x: getDValue(qObj.x) + deltaX,
+                                  y: getDValue(qObj.y) + deltaY
+                                }
+                              };
+                            });
+                          
+                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
+                          const imageUpdates = selection.items
+                            .filter(item => item.type === 'image')
+                            .map(item => {
+                              const imgObj = images[item.id as number];
+                              return {
+                                index: item.id as number,
+                                updates: {
+                                  x: isAbsoluteSnap ? qFinalX : getDValue(imgObj.x) + deltaX,
+                                  y: isAbsoluteSnap ? qFinalY : getDValue(imgObj.y) + deltaY
+                                }
+                              };
+                            });
+                            
+                          if (updateQuestsAndImages) {
+                            updateQuestsAndImages(questUpdates, imageUpdates);
+                          } else {
+                            if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            if (questUpdates.length > 0) updateQuest(questUpdates);
+                          }
+                        } else {
+                          // Comportamiento para imágenes múltiples sin misiones en la selección
+                          const selectedImages = selection.items.filter(item => item.type === 'image');
+                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
+                          
+                          if (isAbsoluteSnap && selectedImages.length > 0) {
+                            // Buscar la imagen seleccionada con el mayor número de orden (order o z-index)
+                            let maxOrder = -Infinity;
+                            let maxOrderImgObj: any = null;
+
+                            selectedImages.forEach(item => {
+                              const imgObj = images[item.id as number];
+                              if (imgObj) {
+                                const orderVal = imgObj.order?.value ?? imgObj.order ?? 1;
+                                if (orderVal > maxOrder) {
+                                  maxOrder = orderVal;
+                                  maxOrderImgObj = imgObj;
+                                }
+                              }
+                            });
+
+                            if (maxOrderImgObj) {
+                              const leaderOrigX = getDValue(maxOrderImgObj.x);
+                              const leaderOrigY = getDValue(maxOrderImgObj.y);
+                              const leaderFinalX = Math.round((leaderOrigX + deltaX) / 0.5) * 0.5;
+                              const leaderFinalY = Math.round((leaderOrigY + deltaY) / 0.5) * 0.5;
+
+                              const imageUpdates = selectedImages.map(item => {
+                                return {
+                                  index: item.id as number,
+                                  updates: {
+                                    x: leaderFinalX,
+                                    y: leaderFinalY
+                                  }
+                                };
+                              });
+
+                              if (imageUpdates.length > 0) updateImage(imageUpdates);
+                            }
+                          } else {
+                            // Modo Relativo o Snap desactivado: mover todas las imágenes conservando sus distancias e intervalos
+                            let finalDeltaX = deltaX;
+                            let finalDeltaY = deltaY;
+                            if (snapToGrid) {
+                              finalDeltaX = Math.round(deltaX / 0.5) * 0.5;
+                              finalDeltaY = Math.round(deltaY / 0.5) * 0.5;
+                            }
+                            const imageUpdates = selectedImages.map(item => {
+                              const imgObj = images[item.id as number];
+                              return {
+                                index: item.id as number,
+                                updates: {
+                                  x: getDValue(imgObj.x) + finalDeltaX,
+                                  y: getDValue(imgObj.y) + finalDeltaY
+                                }
+                              };
+                            });
+                            if (imageUpdates.length > 0) updateImage(imageUpdates);
+                          }
+                        }
+                      } else {
+                        // Arrastre individual de imagen
+                        let newX = node.x() / SCALE_FACTOR;
+                        let newY = node.y() / SCALE_FACTOR;
+                        if (snapToGrid) {
+                          newX = Math.round(newX / 0.5) * 0.5;
+                          newY = Math.round(newY / 0.5) * 0.5;
+                        }
+                        updateImage(idx, { x: newX, y: newY });
+                      }
+                    }
+                    setDraggingId(null);
+                    setDragStartPos(null);
+                    setDragOffset({ x: 0, y: 0 });
+                  },
+  };
 
 
   // Conexión interactiva de dependencias (Wire Dragging)
@@ -810,10 +1199,32 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
     };
   }, [isAutoLayoutMenuOpen]);
 
+  // Mientras la cámara se mueve (zoom con la rueda o paneo) no hace falta el grafo de impacto:
+  // dibujarlo en cada fotograma casi duplica el coste del dibujado en mapas masivos.
+  const hitRestoreTimerRef = useRef<number | undefined>(undefined);
+  const restoreHitGraph = (stage: any) => {
+    try {
+      stage.getLayers().forEach((l: any) => {
+        l.hitGraphEnabled(true);
+        l.batchDraw();
+      });
+    } catch {
+      // el stage pudo destruirse antes de que venza el temporizador
+    }
+  };
+  const suspendHitGraph = (stage: any, restoreAfterMs: number | null) => {
+    stage.getLayers().forEach((l: any) => l.hitGraphEnabled(false));
+    window.clearTimeout(hitRestoreTimerRef.current);
+    if (restoreAfterMs !== null) {
+      hitRestoreTimerRef.current = window.setTimeout(() => restoreHitGraph(stage), restoreAfterMs);
+    }
+  };
+
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
     const scaleBy = 1.1;
     const stage = e.target.getStage();
+    suspendHitGraph(stage, 140);
     const oldScale = stage.scaleX();
 
     const mousePointTo = {
@@ -1238,12 +1649,14 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
         onDragStart={(e) => {
           if (e.target === e.target.getStage()) {
             setIsPanning(true);
+            suspendHitGraph(e.target.getStage(), null);
           }
         }}
         onDragEnd={(e) => {
           if (e.target === e.target.getStage()) {
             setStagePos({ x: e.target.x(), y: e.target.y() });
             setIsPanning(false);
+            restoreHitGraph(e.target.getStage());
           }
         }}
         onMouseDown={(e) => {
@@ -1404,322 +1817,34 @@ export const EditorCanvas: React.FC<CanvasProps> = ({
 
         {layersVisible.images && (
           <Layer>
-            {/* Ordenar imágenes por "order" antes de renderizar para simular z-index con Culling */}
-            {[...visibleImages]
-              .sort((a, b) => getDValue(a.order) - getDValue(b.order))
-              .map((img) => {
-              const idx = img.originalIndex;
+            {/* Imágenes ya ordenadas por "order" (z-index) y recortadas al viewport */}
+            {visibleImages.map(({ img, originalIndex: idx }) => {
               const isZVisible = visibleZLevels.includes(Number(img.order?.value ?? img.order ?? 1));
               if (!isZVisible) return null;
 
-              const x = getDValue(img.x) * SCALE_FACTOR;
-              const y = getDValue(img.y) * SCALE_FACTOR;
-              const w = getDValue(img.width) * SCALE_FACTOR;
-              const h = getDValue(img.height) * SCALE_FACTOR;
-              const rot = getDValue(img.rotation);
-              const isSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
-              const isLocked = lockedKeys.includes(`img-${idx}`);
-
+              const isSelected = selectedImageSet.has(idx);
               // Si este elemento está seleccionado y estamos arrastrando otro del grupo seleccionado
               const isOffsetApplied = isSelected && draggingId !== null && draggingId !== idx;
-              const currentX = x + (isOffsetApplied ? dragOffset.x : 0);
-              const currentY = y + (isOffsetApplied ? dragOffset.y : 0);
 
               return (
-                <Group
+                <ImageNode
                   key={`img-${idx}`}
-                  x={currentX}
-                  y={currentY}
-                  rotation={rot}
-                  draggable={!isLocked}
-                  onMouseEnter={(e) => {
-                    const stage = e.target.getStage();
-                    if (stage && activeTool === 'select') {
-                      stage.container().style.cursor = 'move';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    const stage = e.target.getStage();
-                    if (stage && activeTool === 'select') {
-                      stage.container().style.cursor = 'default';
-                    }
-                  }}
-                  onClick={(e) => {
-                    e.cancelBubble = true;
-                    // Selección individual o múltiple con Shift
-                    if (e.evt.shiftKey) {
-                      const isAlreadySelected = selection.items.some(item => item.type === 'image' && item.id === idx);
-                      let newItems = [];
-                      if (isAlreadySelected) {
-                        newItems = selection.items.filter(item => !(item.type === 'image' && item.id === idx));
-                      } else {
-                        newItems = [...selection.items, { type: 'image' as const, id: idx }];
-                      }
-                      
-                      const hasQuests = newItems.some(i => i.type === 'quest');
-                      const hasImages = newItems.some(i => i.type === 'image');
-                      const type = (hasQuests && hasImages) ? 'mixed' : (hasQuests ? 'quest' : (hasImages ? 'image' : null));
-                      setSelection({ type, ids: newItems.map(i => i.id), items: newItems });
-                    } else {
-                      // Clic normal: Selecciona solo este
-                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
-                    }
-                  }}
-                  onDragStart={(e) => {
-                    const node = e.currentTarget;
-                    if (isLocked) {
-                      node.stopDrag();
-                      return;
-                    }
-                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
-                    if (!isImgSelected) {
-                      setSelection({ type: 'image', ids: [idx], items: [{ type: 'image', id: idx }] });
-                    }
-                    setDraggingId(idx);
-                    setDragStartPos({ x: node.x(), y: node.y() });
-                    setDragOffset({ x: 0, y: 0 });
-                  }}
-                  onDragMove={(e) => {
-                    const node = e.currentTarget;
-                    const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
-                    if (isImgSelected && selection.items.length > 1) {
-                      // Buscar si hay misiones seleccionadas
-                      const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
-                      if (anchorQuest && snapToGrid) {
-                        const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
-                        const snapPixels = (sizeVal / 2) * SCALE_FACTOR;
-                        
-                        const qOrigX = getDValue(anchorQuest.x) * SCALE_FACTOR;
-                        const qOrigY = getDValue(anchorQuest.y) * SCALE_FACTOR;
-                        
-                        // Desplazamiento bruto
-                        const rawDeltaX = node.x() - dragStartPos!.x;
-                        const rawDeltaY = node.y() - dragStartPos!.y;
-                        
-                        // Posición tentativa de la misión
-                        const qTentX = qOrigX + rawDeltaX;
-                        const qTentY = qOrigY + rawDeltaY;
-                        
-                        const qSnappedX = Math.round(qTentX / snapPixels) * snapPixels;
-                        const qSnappedY = Math.round(qTentY / snapPixels) * snapPixels;
-                        
-                        const realDeltaX = qSnappedX - qOrigX;
-                        const realDeltaY = qSnappedY - qOrigY;
-                        
-                        node.x(dragStartPos!.x + realDeltaX);
-                        node.y(dragStartPos!.y + realDeltaY);
-                        setDragOffset({ x: realDeltaX, y: realDeltaY });
-                      } else {
-                        // Comportamiento normal con o sin snap
-                        if (snapToGrid) {
-                          const snapPixels = 0.5 * SCALE_FACTOR;
-                          const x = node.x();
-                          const y = node.y();
-                          const snappedX = Math.round(x / snapPixels) * snapPixels;
-                          const snappedY = Math.round(y / snapPixels) * snapPixels;
-                          node.x(snappedX);
-                          node.y(snappedY);
-                          setDragOffset({ x: snappedX - dragStartPos!.x, y: snappedY - dragStartPos!.y });
-                        } else {
-                          setDragOffset({ x: node.x() - dragStartPos!.x, y: node.y() - dragStartPos!.y });
-                        }
-                      }
-                    } else {
-                      // Arrastre individual sin selección múltiple
-                      if (snapToGrid) {
-                        const snapPixels = 0.5 * SCALE_FACTOR;
-                        const x = node.x();
-                        const y = node.y();
-                        const snappedX = Math.round(x / snapPixels) * snapPixels;
-                        const snappedY = Math.round(y / snapPixels) * snapPixels;
-                        node.x(snappedX);
-                        node.y(snappedY);
-                      }
-                      if (dragStartPos) {
-                        const deltaX = node.x() - dragStartPos.x;
-                        const deltaY = node.y() - dragStartPos.y;
-                        setDragOffset({ x: deltaX, y: deltaY });
-                      }
-                    }
-                  }}
-                  onDragEnd={(e) => {
-                    const node = e.currentTarget;
-                    if (dragStartPos) {
-                      const isImgSelected = selection.items.some(item => item.type === 'image' && item.id === idx);
-                      if (isImgSelected && selection.items.length > 1) {
-                        // Buscar si hay misiones seleccionadas
-                        const anchorQuest = quests.find(q => selection.items.some(item => item.type === 'quest' && item.id === q.id));
-                        
-                        let deltaX = (node.x() - dragStartPos.x) / SCALE_FACTOR;
-                        let deltaY = (node.y() - dragStartPos.y) / SCALE_FACTOR;
-
-                        if (anchorQuest) {
-                          // Si hay misión ancla, ella manda
-                          const qOrigX = getDValue(anchorQuest.x);
-                          const qOrigY = getDValue(anchorQuest.y);
-                          const sizeVal = anchorQuest.size?.value ?? anchorQuest.size ?? 1.0;
-                          const snapStep = sizeVal / 2;
-
-                          if (snapToGrid) {
-                            deltaX = Math.round(deltaX / snapStep) * snapStep;
-                            deltaY = Math.round(deltaY / snapStep) * snapStep;
-                          }
-
-                          const qFinalX = qOrigX + deltaX;
-                          const qFinalY = qOrigY + deltaY;
-                          
-                          // Actualizar quests seleccionadas relativamente
-                          const questUpdates = selection.items
-                            .filter(item => item.type === 'quest')
-                            .map(item => {
-                              const qObj = quests.find(q => q.id === item.id);
-                              return {
-                                id: item.id as string,
-                                updates: {
-                                  x: getDValue(qObj.x) + deltaX,
-                                  y: getDValue(qObj.y) + deltaY
-                                }
-                              };
-                            });
-                          
-                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
-                          const imageUpdates = selection.items
-                            .filter(item => item.type === 'image')
-                            .map(item => {
-                              const imgObj = images[item.id as number];
-                              return {
-                                index: item.id as number,
-                                updates: {
-                                  x: isAbsoluteSnap ? qFinalX : getDValue(imgObj.x) + deltaX,
-                                  y: isAbsoluteSnap ? qFinalY : getDValue(imgObj.y) + deltaY
-                                }
-                              };
-                            });
-                            
-                          if (updateQuestsAndImages) {
-                            updateQuestsAndImages(questUpdates, imageUpdates);
-                          } else {
-                            if (imageUpdates.length > 0) updateImage(imageUpdates);
-                            if (questUpdates.length > 0) updateQuest(questUpdates);
-                          }
-                        } else {
-                          // Comportamiento para imágenes múltiples sin misiones en la selección
-                          const selectedImages = selection.items.filter(item => item.type === 'image');
-                          const isAbsoluteSnap = snapToGrid && snapMode === 'absolute';
-                          
-                          if (isAbsoluteSnap && selectedImages.length > 0) {
-                            // Buscar la imagen seleccionada con el mayor número de orden (order o z-index)
-                            let maxOrder = -Infinity;
-                            let maxOrderImgObj: any = null;
-
-                            selectedImages.forEach(item => {
-                              const imgObj = images[item.id as number];
-                              if (imgObj) {
-                                const orderVal = imgObj.order?.value ?? imgObj.order ?? 1;
-                                if (orderVal > maxOrder) {
-                                  maxOrder = orderVal;
-                                  maxOrderImgObj = imgObj;
-                                }
-                              }
-                            });
-
-                            if (maxOrderImgObj) {
-                              const leaderOrigX = getDValue(maxOrderImgObj.x);
-                              const leaderOrigY = getDValue(maxOrderImgObj.y);
-                              const leaderFinalX = Math.round((leaderOrigX + deltaX) / 0.5) * 0.5;
-                              const leaderFinalY = Math.round((leaderOrigY + deltaY) / 0.5) * 0.5;
-
-                              const imageUpdates = selectedImages.map(item => {
-                                return {
-                                  index: item.id as number,
-                                  updates: {
-                                    x: leaderFinalX,
-                                    y: leaderFinalY
-                                  }
-                                };
-                              });
-
-                              if (imageUpdates.length > 0) updateImage(imageUpdates);
-                            }
-                          } else {
-                            // Modo Relativo o Snap desactivado: mover todas las imágenes conservando sus distancias e intervalos
-                            let finalDeltaX = deltaX;
-                            let finalDeltaY = deltaY;
-                            if (snapToGrid) {
-                              finalDeltaX = Math.round(deltaX / 0.5) * 0.5;
-                              finalDeltaY = Math.round(deltaY / 0.5) * 0.5;
-                            }
-                            const imageUpdates = selectedImages.map(item => {
-                              const imgObj = images[item.id as number];
-                              return {
-                                index: item.id as number,
-                                updates: {
-                                  x: getDValue(imgObj.x) + finalDeltaX,
-                                  y: getDValue(imgObj.y) + finalDeltaY
-                                }
-                              };
-                            });
-                            if (imageUpdates.length > 0) updateImage(imageUpdates);
-                          }
-                        }
-                      } else {
-                        // Arrastre individual de imagen
-                        let newX = node.x() / SCALE_FACTOR;
-                        let newY = node.y() / SCALE_FACTOR;
-                        if (snapToGrid) {
-                          newX = Math.round(newX / 0.5) * 0.5;
-                          newY = Math.round(newY / 0.5) * 0.5;
-                        }
-                        updateImage(idx, { x: newX, y: newY });
-                      }
-                    }
-                    setDraggingId(null);
-                    setDragStartPos(null);
-                    setDragOffset({ x: 0, y: 0 });
-                  }}
-                >
-                  {/* Área de impacto para garantizar captura de clics y arrastre al 100% */}
-                  <Rect
-                    width={w}
-                    height={h}
-                    offsetX={w / 2}
-                    offsetY={h / 2}
-                    fill="rgba(0, 0, 0, 0.001)"
-                    listening={true}
-                  />
-
-                  {/* Intentar renderizar la textura */}
-                  <FtbTexture 
-                    icon={img.image} 
-                    width={w} 
-                    height={h} 
-                    color={img.color?.value ?? img.color} 
-                    opacity={img.alpha !== undefined ? getDValue(img.alpha?.value ?? img.alpha) / 255 : 1.0}
-                    lowQuality={isLowQualityImages}
-                    skipIsometric={true}
-                  />
-                  
-                  {/* Borde de selección */}
-                  {isSelected && (
-                    <Rect
-                      width={w}
-                      height={h}
-                      offsetX={w/2}
-                      offsetY={h/2}
-                      stroke="#7b61ff"
-                      strokeWidth={3 / stageScale}
-                    />
-                  )}
-
-                  {isLocked && (
-                    <Text
-                      text="🔒"
-                      fontSize={14 / stageScale}
-                      x={-w / 2 + 4}
-                      y={-h / 2 + 4}
-                    />
-                  )}
-                </Group>
+                  idx={idx}
+                  x={getDValue(img.x) * SCALE_FACTOR + (isOffsetApplied ? dragOffset.x : 0)}
+                  y={getDValue(img.y) * SCALE_FACTOR + (isOffsetApplied ? dragOffset.y : 0)}
+                  w={getDValue(img.width) * SCALE_FACTOR}
+                  h={getDValue(img.height) * SCALE_FACTOR}
+                  rot={getDValue(img.rotation)}
+                  isSelected={isSelected}
+                  isLocked={lockedKeys.includes(`img-${idx}`)}
+                  image={img.image}
+                  color={img.color?.value ?? img.color}
+                  opacity={img.alpha !== undefined ? getDValue(img.alpha?.value ?? img.alpha) / 255 : 1.0}
+                  lowQuality={isLowQualityImages}
+                  stageScale={stageScale}
+                  activeTool={activeTool}
+                  handlersRef={imageHandlersRef}
+                />
               );
             })}
           </Layer>

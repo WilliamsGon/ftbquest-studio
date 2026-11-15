@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Map as MapIcon, Minimize2 } from 'lucide-react';
 
 interface MinimapProps {
@@ -71,19 +71,8 @@ export const Minimap: React.FC<MinimapProps> = ({
     localStorage.setItem('ftb_minimap_visible', nextState ? 'false' : 'true');
   };
 
-  // Convertir coordenadas de minimapa a posición del stage
-  const navigateToMinimapCoord = useCallback((canvasX: number, canvasY: number) => {
-    if (!quests || (quests.length === 0 && images.length === 0)) return;
-
-    // Viewport en coordenadas del mundo
-    const vpLeft = -stagePos.x / stageScale;
-    const vpTop = -stagePos.y / stageScale;
-    const vpWidth = dimensions.width / stageScale;
-    const vpHeight = dimensions.height / stageScale;
-    const vpRight = vpLeft + vpWidth;
-    const vpBottom = vpTop + vpHeight;
-
-    // Bounding Box del contenido
+  // Límites del contenido: solo cambian al editar misiones/imágenes, no al mover la cámara
+  const contentBounds = useMemo(() => {
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -110,8 +99,103 @@ export const Minimap: React.FC<MinimapProps> = ({
     });
 
     if (minX === Infinity) {
-      minX = -400; maxX = 400; minY = -300; maxY = 300;
+      return { minX: -400, maxX: 400, minY: -300, maxY: 300 };
     }
+    return { minX, maxX, minY, maxY };
+  }, [quests, images]);
+
+  // Capa estática (imágenes de fondo + cables de dependencias) dibujada UNA vez en un canvas aparte.
+  // En cada movimiento de cámara solo se estampa escalada, en vez de repintar miles de rectángulos.
+  const staticLayer = useMemo(() => {
+    if (quests.length === 0 && images.length === 0) return null;
+
+    const { minX, maxX, minY, maxY } = contentBounds;
+    const x0 = minX - 120;
+    const y0 = minY - 120;
+    const wW = Math.max(100, maxX + 120 - x0);
+    const wH = Math.max(100, maxY + 120 - y0);
+    const dpr = window.devicePixelRatio || 1;
+    // Es la escala más grande que alcanzará el minimapa (el mundo visible nunca es menor que el contenido)
+    const s0 = Math.min(MINIMAP_WIDTH / wW, MINIMAP_HEIGHT / wH);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(wW * s0 * dpr));
+    canvas.height = Math.max(1, Math.ceil(wH * s0 * dpr));
+    const c = canvas.getContext('2d');
+    if (!c) return null;
+    c.scale(dpr, dpr);
+
+    const toX = (wx: number) => (wx - x0) * s0;
+    const toY = (wy: number) => (wy - y0) * s0;
+
+    // 1. Imágenes de fondo (rectángulos tenues)
+    c.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    c.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    c.lineWidth = 1;
+    images.forEach(img => {
+      const ix = getDValue(img.x) * SCALE_FACTOR;
+      const iy = getDValue(img.y) * SCALE_FACTOR;
+      const iw = (getDValue(img.width) || 1) * SCALE_FACTOR;
+      const ih = (getDValue(img.height) || 1) * SCALE_FACTOR;
+      const cx = toX(ix - iw / 2);
+      const cy = toY(iy - ih / 2);
+      const cw = Math.max(2, iw * s0);
+      const ch = Math.max(2, ih * s0);
+      c.fillRect(cx, cy, cw, ch);
+      c.strokeRect(cx, cy, cw, ch);
+    });
+
+    // 2. Cables de dependencias
+    const questMap = new Map<string, any>();
+    quests.forEach(q => questMap.set(String(q.id), q));
+
+    quests.forEach(q => {
+      const qStrId = String(q.id);
+      if (isPlayerMode && hiddenQuestIds?.has(qStrId)) return;
+      if (isPlayerMode && q.hide_dependency_lines === true) return;
+
+      const dstX = toX(getDValue(q.x) * SCALE_FACTOR);
+      const dstY = toY(getDValue(q.y) * SCALE_FACTOR);
+
+      extractDependencies(q).forEach(depId => {
+        const depStrId = String(depId);
+        if (isPlayerMode && hiddenQuestIds?.has(depStrId)) return;
+
+        const srcQ = questMap.get(depStrId);
+        if (!srcQ) return;
+
+        c.beginPath();
+        c.moveTo(toX(getDValue(srcQ.x) * SCALE_FACTOR), toY(getDValue(srcQ.y) * SCALE_FACTOR));
+        c.lineTo(dstX, dstY);
+
+        if (isPlayerMode) {
+          const isSrcCompleted = playerCompletedQuestIds?.has(depStrId);
+          c.strokeStyle = isSrcCompleted ? 'rgba(16, 185, 129, 0.7)' : 'rgba(100, 116, 139, 0.3)';
+          c.lineWidth = isSrcCompleted ? 1.5 : 1;
+        } else {
+          c.strokeStyle = 'rgba(137, 180, 250, 0.35)';
+          c.lineWidth = 1;
+        }
+        c.stroke();
+      });
+    });
+
+    return { canvas, x0, y0, wW, wH };
+  }, [quests, images, contentBounds, isPlayerMode, playerCompletedQuestIds, hiddenQuestIds]);
+
+  // Convertir coordenadas de minimapa a posición del stage
+  const navigateToMinimapCoord = useCallback((canvasX: number, canvasY: number) => {
+    if (!quests || (quests.length === 0 && images.length === 0)) return;
+
+    // Viewport en coordenadas del mundo
+    const vpLeft = -stagePos.x / stageScale;
+    const vpTop = -stagePos.y / stageScale;
+    const vpWidth = dimensions.width / stageScale;
+    const vpHeight = dimensions.height / stageScale;
+    const vpRight = vpLeft + vpWidth;
+    const vpBottom = vpTop + vpHeight;
+
+    const { minX, maxX, minY, maxY } = contentBounds;
 
     const worldMinX = Math.min(minX - 120, vpLeft - 40);
     const worldMaxX = Math.max(maxX + 120, vpRight + 40);
@@ -132,7 +216,7 @@ export const Minimap: React.FC<MinimapProps> = ({
       x: dimensions.width / 2 - targetWorldX * stageScale,
       y: dimensions.height / 2 - targetWorldY * stageScale
     });
-  }, [quests, images, stagePos, stageScale, dimensions, onNavigate]);
+  }, [quests, images, contentBounds, stagePos, stageScale, dimensions, onNavigate]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDraggingRef.current = true;
@@ -164,11 +248,13 @@ export const Minimap: React.FC<MinimapProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Configurar escala HiDPI (Retina)
+    // Configurar escala HiDPI (Retina). Redimensionar el canvas reasigna su bitmap: solo si hace falta.
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = MINIMAP_WIDTH * dpr;
-    canvas.height = MINIMAP_HEIGHT * dpr;
-    ctx.scale(dpr, dpr);
+    if (canvas.width !== MINIMAP_WIDTH * dpr || canvas.height !== MINIMAP_HEIGHT * dpr) {
+      canvas.width = MINIMAP_WIDTH * dpr;
+      canvas.height = MINIMAP_HEIGHT * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Limpiar fondo
     ctx.fillStyle = '#12141a';
@@ -198,35 +284,8 @@ export const Minimap: React.FC<MinimapProps> = ({
     const vpRight = vpLeft + vpWidth;
     const vpBottom = vpTop + vpHeight;
 
-    // Bounding Box
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-
-    quests.forEach(q => {
-      const qx = getDValue(q.x) * SCALE_FACTOR;
-      const qy = getDValue(q.y) * SCALE_FACTOR;
-      if (qx < minX) minX = qx;
-      if (qx > maxX) maxX = qx;
-      if (qy < minY) minY = qy;
-      if (qy > maxY) maxY = qy;
-    });
-
-    images.forEach(img => {
-      const ix = getDValue(img.x) * SCALE_FACTOR;
-      const iy = getDValue(img.y) * SCALE_FACTOR;
-      const iw = (getDValue(img.width) || 1) * SCALE_FACTOR;
-      const ih = (getDValue(img.height) || 1) * SCALE_FACTOR;
-      if (ix - iw / 2 < minX) minX = ix - iw / 2;
-      if (ix + iw / 2 > maxX) maxX = ix + iw / 2;
-      if (iy - ih / 2 < minY) minY = iy - ih / 2;
-      if (iy + ih / 2 > maxY) maxY = iy + ih / 2;
-    });
-
-    if (minX === Infinity) {
-      minX = -400; maxX = 400; minY = -300; maxY = 300;
-    }
+    // Bounding Box (memoizado)
+    const { minX, maxX, minY, maxY } = contentBounds;
 
     const worldMinX = Math.min(minX - 120, vpLeft - 40);
     const worldMaxX = Math.max(maxX + 120, vpRight + 40);
@@ -243,63 +302,16 @@ export const Minimap: React.FC<MinimapProps> = ({
     const toCanvasX = (wx: number) => offsetX + (wx - worldMinX) * scale;
     const toCanvasY = (wy: number) => offsetY + (wy - worldMinY) * scale;
 
-    // 1. Dibujar Imágenes de Fondo (rectángulos tenues)
-    images.forEach(img => {
-      const ix = getDValue(img.x) * SCALE_FACTOR;
-      const iy = getDValue(img.y) * SCALE_FACTOR;
-      const iw = (getDValue(img.width) || 1) * SCALE_FACTOR;
-      const ih = (getDValue(img.height) || 1) * SCALE_FACTOR;
-
-      const cx = toCanvasX(ix - iw / 2);
-      const cy = toCanvasY(iy - ih / 2);
-      const cw = Math.max(2, iw * scale);
-      const ch = Math.max(2, ih * scale);
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.lineWidth = 1;
-      ctx.fillRect(cx, cy, cw, ch);
-      ctx.strokeRect(cx, cy, cw, ch);
-    });
-
-    // 2. Dibujar Cables de Dependencias
-    const questMap = new Map<string, any>();
-    quests.forEach(q => questMap.set(String(q.id), q));
-
-    quests.forEach(q => {
-      const qStrId = String(q.id);
-      if (isPlayerMode && hiddenQuestIds?.has(qStrId)) return;
-      if (isPlayerMode && q.hide_dependency_lines === true) return;
-
-      const dstX = toCanvasX(getDValue(q.x) * SCALE_FACTOR);
-      const dstY = toCanvasY(getDValue(q.y) * SCALE_FACTOR);
-      const deps = extractDependencies(q);
-
-      deps.forEach(depId => {
-        const depStrId = String(depId);
-        if (isPlayerMode && hiddenQuestIds?.has(depStrId)) return;
-
-        const srcQ = questMap.get(depStrId);
-        if (srcQ) {
-          const srcX = toCanvasX(getDValue(srcQ.x) * SCALE_FACTOR);
-          const srcY = toCanvasY(getDValue(srcQ.y) * SCALE_FACTOR);
-
-          ctx.beginPath();
-          ctx.moveTo(srcX, srcY);
-          ctx.lineTo(dstX, dstY);
-
-          if (isPlayerMode) {
-            const isSrcCompleted = playerCompletedQuestIds?.has(depStrId);
-            ctx.strokeStyle = isSrcCompleted ? 'rgba(16, 185, 129, 0.7)' : 'rgba(100, 116, 139, 0.3)';
-            ctx.lineWidth = isSrcCompleted ? 1.5 : 1;
-          } else {
-            ctx.strokeStyle = 'rgba(137, 180, 250, 0.35)';
-            ctx.lineWidth = 1;
-          }
-          ctx.stroke();
-        }
-      });
-    });
+    // 1-2. Imágenes de fondo y cables: capa estática cacheada, estampada con la escala actual
+    if (staticLayer) {
+      ctx.drawImage(
+        staticLayer.canvas,
+        toCanvasX(staticLayer.x0),
+        toCanvasY(staticLayer.y0),
+        staticLayer.wW * scale,
+        staticLayer.wH * scale
+      );
+    }
 
     // 3. Dibujar Nodos de Misiones
     const selectedIds = new Set(selection.items.filter(i => i.type === 'quest').map(i => String(i.id)));
@@ -388,7 +400,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.fillRect(vpCanvasX, vpCanvasY, vpCanvasW, vpCanvasH);
     ctx.strokeRect(vpCanvasX, vpCanvasY, vpCanvasW, vpCanvasH);
 
-  }, [isCollapsed, quests, images, selection, stageScale, stagePos, dimensions, searchMatchedIds, activeMatchId]);
+  }, [isCollapsed, quests, selection, staticLayer, contentBounds, stageScale, stagePos, dimensions, searchMatchedIds, activeMatchId, isPlayerMode, playerCompletedQuestIds, hiddenQuestIds]);
 
   // Si está colapsado, mostrar píldora compacta
   if (isCollapsed) {

@@ -750,6 +750,21 @@ export const RewardTableModal: React.FC<RewardTableModalProps> = ({
                             </div>
                           )}
 
+                          {/* Bonus aleatorio (solo para item) */}
+                          {reward.type === 'item' && (
+                            <div style={{ width: '70px' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                className="input-field"
+                                style={{ fontSize: '0.78rem', height: '30px', textAlign: 'center' }}
+                                value={reward.random_bonus ?? 0}
+                                title="Bonus aleatorio: se suma 0..N unidades extra a la cantidad (random_bonus)"
+                                onChange={(e) => updateRewardEntry(idx, { random_bonus: Math.max(0, parseInt(e.target.value) || 0) })}
+                              />
+                            </div>
+                          )}
+
                           {/* Peso (Weight) */}
                           <div style={{ width: '90px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <input
